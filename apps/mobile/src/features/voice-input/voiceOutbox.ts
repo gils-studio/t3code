@@ -4,7 +4,7 @@ import type {
 } from "@t3tools/client-runtime/voice-input";
 
 export const VOICE_SERVER_RECORDING_LIMIT_SECONDS = 30 * 60;
-const POLL_INTERVAL_MS = 2_000;
+const POLL_INTERVAL_MS = 1_000;
 
 export type VoiceJob = {
   readonly status: "queued" | "transcribing" | "sending" | "done" | "failed";
@@ -53,6 +53,11 @@ export type VoiceOutboxDependencies = {
   readonly getClient: () => VoiceServerClient | null;
   /** Must resolve only once the text is durably part of the draft. */
   readonly appendDraft: (ownerKey: string, text: string) => Promise<void>;
+  /** Shows the words while they are spoken; the recording never depends on it. */
+  readonly live: {
+    start(id: string, uri: string, language: string): void;
+    stop(): void;
+  };
   readonly newId: () => string;
   readonly language: () => string;
   readonly now: () => number;
@@ -144,11 +149,16 @@ export class VoiceOutbox {
     };
     return {
       recordingLimitSeconds: VOICE_SERVER_RECORDING_LIMIT_SECONDS,
-      recordingStarted: (uri) => void this.enqueue(() => begin(uri)),
+      recordingStarted: (uri) =>
+        void this.enqueue(async () => {
+          await begin(uri);
+          this.dependencies.live.start(id!, uri, this.dependencies.language());
+        }),
       recordingFinished: (uri, disposition) => {
         const mode = target.threadId === null ? "draft" : disposition;
         const prefixText = mode === "send" ? target.readDraftText() : "";
         void this.enqueue(async () => {
+          this.dependencies.live.stop();
           if (id === null) await begin(uri);
           const item = this.items.get(id!);
           if (!item) return;
@@ -161,6 +171,7 @@ export class VoiceOutbox {
       },
       recordingDiscarded: () => {
         void this.enqueue(async () => {
+          this.dependencies.live.stop();
           if (id !== null) await this.forget(id);
         });
       },

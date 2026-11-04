@@ -13,6 +13,10 @@ export type Config = {
   readonly whisperCli: string;
   readonly whisperCwd: string;
   readonly whisperArgs: ReadonlyArray<string>;
+  /** Loopback port of the model server that runs while someone dictates. */
+  readonly whisperServerPort?: number;
+  /** How long the model stays loaded after the last use. */
+  readonly whisperIdleSeconds?: number;
   readonly vadModel?: string;
   readonly model: string;
   readonly ffmpeg: string;

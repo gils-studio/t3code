@@ -29,10 +29,12 @@ function harness(options: { readonly saved?: ReadonlyArray<VoiceOutboxItem> } = 
     drafts.set(ownerKey, `${drafts.get(ownerKey) ?? ""}${text}`);
   });
   let sequence = 0;
+  const live = { start: vi.fn(), stop: vi.fn() };
   const outbox = new VoiceOutbox({
     store,
     getClient: () => client,
     appendDraft,
+    live,
     newId: () => `voice-${(sequence += 1)}`,
     language: () => "de",
     now: () => sequence,

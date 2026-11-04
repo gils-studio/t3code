@@ -112,6 +112,7 @@ import {
   ComposerDictationStartAction,
   ComposerDictationStatus,
   ComposerDictationToolbar,
+  ComposerVoiceLiveText,
   ComposerVoiceOutbox,
 } from "../voice-input/ComposerDictationControl";
 import { useVoiceInputController } from "../voice-input/useVoiceInputController";
@@ -894,6 +895,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
             onDismiss={voiceInput.cancel}
           />
           <ComposerVoiceOutbox ownerKey={composerDraftKey} />
+          {showsCompactDictation ? <ComposerVoiceLiveText /> : null}
           {isExpanded ? editingAttachments : null}
           <View
             onLayout={(event) => {

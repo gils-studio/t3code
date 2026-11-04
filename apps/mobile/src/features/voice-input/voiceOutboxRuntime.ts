@@ -1,3 +1,4 @@
+import { File, FileMode } from "expo-file-system";
 import * as Linking from "expo-linking";
 import { useSyncExternalStore } from "react";
 import { Alert, AppState } from "react-native";
@@ -9,6 +10,7 @@ import {
   getComposerDraftSnapshot,
   setComposerDraftText,
 } from "../../state/use-composer-drafts";
+import { VoiceLivePreview, type VoiceLiveClient } from "./voiceLivePreview";
 import { VoiceOutbox, type VoiceServerClient } from "./voiceOutbox";
 import { voiceOutboxFileStore } from "./voiceOutboxStore";
 import {
@@ -23,7 +25,7 @@ import {
 } from "./voiceServer";
 
 let server: VoiceServerConfig | null = null;
-let client: VoiceServerClient | null = null;
+let client: (VoiceServerClient & VoiceLiveClient) | null = null;
 let started = false;
 const serverListeners = new Set<() => void>();
 
@@ -42,10 +44,27 @@ async function appendDraftText(ownerKey: string, text: string): Promise<void> {
   await flushComposerDrafts();
 }
 
+/** Opened per read: the recorder keeps growing the file, and a handle may cache its size. */
+async function readRecordedBytes(uri: string, offset: number, maxBytes: number) {
+  const handle = new File(uri).open(FileMode.ReadOnly);
+  try {
+    handle.offset = offset;
+    return await handle.readBytes(maxBytes);
+  } finally {
+    handle.close();
+  }
+}
+
+const voiceLivePreview = new VoiceLivePreview({
+  getClient: () => client,
+  readAudio: readRecordedBytes,
+});
+
 export const voiceOutbox = new VoiceOutbox({
   store: voiceOutboxFileStore,
   getClient: () => client,
   appendDraft: appendDraftText,
+  live: voiceLivePreview,
   newId: () => `voice-${uuidv4()}`,
   language: deviceLanguage,
   now: Date.now,
@@ -69,6 +88,9 @@ export const useVoiceServer = () => useSyncExternalStore(subscribeVoiceServer, g
 
 export const useVoiceOutboxItems = () =>
   useSyncExternalStore(voiceOutbox.subscribe, voiceOutbox.getSnapshot);
+
+export const useVoiceLiveText = () =>
+  useSyncExternalStore(voiceLivePreview.subscribe, voiceLivePreview.getText);
 
 export async function pairVoiceServer(link: string): Promise<void> {
   const pairing = parseVoicePairLink(link);
