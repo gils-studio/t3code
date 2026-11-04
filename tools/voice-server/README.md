@@ -30,6 +30,22 @@ Open the printed link on the phone, or paste it under Settings → Microphone �
 - `t3 thread send` can only queue. To steer the running agent the app claims the job before it is transcribed and sends the message itself, so that case needs the app.
 - Finished jobs are removed after 14 days.
 
+## Vocabulary
+
+Whisper has no real dictionary, so `~/.t3-voice/vocabulary.json` works in two steps. It is read for every recording, so changes need no restart.
+
+- `prompt` is text whisper continues from. Write a sentence that uses the names: it works clearly better than a bare list. Keep it short, whisper reads at most 224 tokens.
+- `corrections` maps a right spelling to what whisper writes instead, for names the prompt does not fix. Only whole words are replaced, in any case.
+
+```json
+{
+  "prompt": "Gespräch über unsere Apps Pidohr und dialed.",
+  "corrections": { "Pidohr": ["Pidor"] }
+}
+```
+
+Do not pass `-mc 0` in `whisperArgs`: whisper.cpp then drops the prompt without a word. A prompt can also be repeated back on audio without speech, which the Silero gate catches, so keep `-VadModel` set.
+
 ## Reachability
 
 With `tunnelName` set, the service keeps an ssh tunnel open through the `devtunnel` host, so the phone reaches it from anywhere. The URL is public; the device token is what protects it. A leaked token lets its holder send messages to your threads, so treat it like a password.

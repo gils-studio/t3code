@@ -25,6 +25,8 @@ export type LiveOptions = {
   ) => Promise<{ readonly segments: ReadonlyArray<SpeechSegment> }>;
   /** Finished recordings come first: the preview never delays a real transcript. */
   readonly isBusy: () => boolean;
+  /** Gets the whole text, because a window can end in the middle of a name. */
+  readonly correct: (text: string) => string;
   readonly now?: () => number;
   readonly log?: (message: string) => void;
 };
@@ -175,7 +177,7 @@ export class LiveTranscriber {
     return {
       accepted,
       received: session.received,
-      text: (session.committedText + session.windowText).trim(),
+      text: this.options.correct((session.committedText + session.windowText).trim()),
     };
   }
 
