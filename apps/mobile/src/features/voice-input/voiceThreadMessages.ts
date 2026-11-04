@@ -55,18 +55,16 @@ export function withVoiceMessages(
         item.heldMessage === undefined &&
         !inQueue.has(item.id),
     )
-    .map(
-      (item): QueuedThreadMessage => ({
-        environmentId: thread.environmentId,
-        threadId: thread.threadId,
-        messageId: item.id as MessageId,
-        commandId: item.id as CommandId,
-        text: voiceItemText(item),
-        attachments: [],
-        awaitingVoiceId: item.id,
-        createdAt: new Date(item.createdAt).toISOString(),
-      }),
-    );
+    .map((item): QueuedThreadMessage => ({
+      environmentId: thread.environmentId,
+      threadId: thread.threadId,
+      messageId: item.id as MessageId,
+      commandId: item.id as CommandId,
+      text: voiceItemText(item),
+      attachments: [],
+      awaitingVoiceId: item.id,
+      createdAt: new Date(item.createdAt).toISOString(),
+    }));
   const kept = queuedMessages.filter(
     (message) => message.awaitingVoiceId === undefined || !inQueue.has(message.awaitingVoiceId),
   );

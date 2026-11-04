@@ -161,7 +161,8 @@ export class VoiceOutbox {
     this.foreground = foreground;
     this.backgroundedAt = foreground ? null : this.dependencies.now();
     if (foreground) this.resumeUploads();
-    else if (!this.shouldPoll()) this.cancelPoll();
+    else if (this.shouldPoll()) this.schedulePoll();
+    else this.cancelPoll();
   }
 
   createHandoff(target: VoiceHandoffTarget): VoiceRecordingHandoff {
