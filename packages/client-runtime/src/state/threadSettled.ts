@@ -68,6 +68,39 @@ export function hasQueuedTurnStart(
   );
 }
 
+/**
+ * The server settles a thread with its last activity as settledAt, and a run or message can trail
+ * that by a moment. Anything later than this margin is new work, not the end of the settled turn.
+ */
+const LATE_ACTIVITY_MARGIN_MS = 5_000;
+
+type SettledThreadShell = Pick<
+  EnvironmentThreadShell,
+  "settledOverride" | "settledAt" | "archivedAt" | "latestRun"
+> & {
+  readonly source: Pick<EnvironmentThreadShell["source"], "latestVisibleMessage">;
+};
+
+/**
+ * A wake that does not pass through message dispatch (a background task reporting back after a
+ * merge settled the thread) leaves it settled, so its reply lands on a shelf nobody reads.
+ */
+export function threadActiveAfterSettling(thread: SettledThreadShell): boolean {
+  if (thread.settledOverride !== "settled" || thread.settledAt === null) return false;
+  if (thread.archivedAt !== null) return false;
+  const settledAtMs = Date.parse(thread.settledAt);
+  if (Number.isNaN(settledAtMs)) return false;
+  const message = thread.source.latestVisibleMessage;
+  const run = thread.latestRun;
+  const activity = [
+    message === null ? Number.NaN : DateTime.toEpochMillis(message.updatedAt),
+    Date.parse(run?.requestedAt ?? ""),
+    Date.parse(run?.startedAt ?? ""),
+    Date.parse(run?.completedAt ?? ""),
+  ];
+  return activity.some((at) => at > settledAtMs + LATE_ACTIVITY_MARGIN_MS);
+}
+
 export interface ThreadSnoozeShell extends QueuedThreadShell {
   readonly source?: Pick<EnvironmentThreadShell["source"], "pendingRuntimeRequest">;
   readonly snoozedUntil?: string | null;
