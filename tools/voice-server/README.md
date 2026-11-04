@@ -27,6 +27,7 @@ Open the printed link on the phone, or paste it under Settings â†’ Microphone â†
 - While someone records, the app streams the growing file and shows a live preview. It is a quick, greedy pass that yields to finished recordings; the text that counts always comes from the full upload. Preview audio is deleted when the upload arrives, after five idle minutes, or at the next service start.
 - The phone gets its success only after the audio is on disk here; jobs survive a restart of the service.
 - A failing transcription retries, then ends as failed with the audio kept. Sending retries for as long as T3 is unreachable.
+- `t3 thread send` can only queue. To steer the running agent the app claims the job before it is transcribed and sends the message itself, so that case needs the app.
 - Finished jobs are removed after 14 days.
 
 ## Reachability

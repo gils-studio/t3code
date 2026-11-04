@@ -189,7 +189,7 @@ export function createHttpServer(options: HttpOptions): NodeHttp.Server {
     if (request.method === "PUT" && liveId && isValidJobId(liveId)) {
       return receiveLiveAudio(request, response, liveId, searchParams, options);
     }
-    const match = /^\/v1\/jobs\/([^/]+)(\/ack|\/retry)?$/.exec(pathname);
+    const match = /^\/v1\/jobs\/([^/]+)(\/ack|\/retry|\/claim)?$/.exec(pathname);
     const id = match?.[1];
     if (!id || !isValidJobId(id)) {
       request.resume();
@@ -227,6 +227,11 @@ export function createHttpServer(options: HttpOptions): NodeHttp.Server {
     if (request.method === "POST" && action === "/ack") {
       const acknowledged = await store.update(id, { acknowledgedAt: now }, now);
       sendJson(response, 200, publicJob(store, acknowledged));
+      return;
+    }
+    if (request.method === "POST" && action === "/claim") {
+      const claimed = await store.claim(id, now);
+      sendJson(response, claimed ? 200 : 409, publicJob(store, store.get(id) ?? job));
       return;
     }
     if (request.method === "POST" && action === "/retry" && job.status === "failed") {

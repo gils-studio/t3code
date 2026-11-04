@@ -208,3 +208,30 @@ NodeTest.test("a long recording gets a timeout the whisper-server request accept
   NodeAssert.ok(millis > 120_000);
   NodeAssert.doesNotThrow(() => AbortSignal.timeout(millis));
 });
+
+NodeTest.test("a job claimed during transcription is left to the phone", async () => {
+  const sent: string[] = [];
+  const { store, worker, add } = await harness(
+    {
+      transcribe: async (job) => {
+        NodeAssert.equal(await store.claim(job.id, 2_000), true);
+        return "hallo";
+      },
+    },
+    sender(sent),
+  );
+  await add("job-claim1");
+  await worker.runNext();
+  NodeAssert.deepEqual(sent, []);
+  NodeAssert.equal(store.get("job-claim1")?.status, "done");
+  NodeAssert.equal(store.get("job-claim1")?.transcript, "hallo");
+});
+
+NodeTest.test("a job the service started sending can no longer be claimed", async () => {
+  const sent: string[] = [];
+  const { store, worker, add } = await harness({ transcribe: async () => "hallo" }, sender(sent));
+  await add("job-claim2");
+  await worker.runNext();
+  NodeAssert.equal(await store.claim("job-claim2", 2_000), false);
+  NodeAssert.deepEqual(sent, ["hallo"]);
+});

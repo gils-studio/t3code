@@ -148,17 +148,19 @@ export class Worker {
       );
       return;
     }
+    // One write, so a claim lands either before this decision or is refused after it.
     const transcribed = await store.update(
       job.id,
-      { transcript, attempts: 0, lastError: null },
+      ({ mode }) => ({
+        transcript,
+        attempts: 0,
+        lastError: null,
+        // Nothing was said: a voice message without words must not reach the agent.
+        status: mode === "draft" || transcript.length === 0 ? "done" : "sending",
+      }),
       this.now(),
     );
-    // Nothing was said: a voice message without words must not reach the agent.
-    if (transcribed.mode === "draft" || transcript.length === 0) {
-      await store.update(job.id, { status: "done" }, this.now());
-      return;
-    }
-    await this.send(await store.update(job.id, { status: "sending" }, this.now()));
+    if (transcribed.status === "sending") await this.send(transcribed);
   }
 
   /** The T3 server may be down or restarting, so sending retries for as long as it takes. */

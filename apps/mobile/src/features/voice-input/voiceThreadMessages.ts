@@ -17,14 +17,25 @@ export const voiceItemText = (item: VoiceOutboxItem) =>
   [item.prefixText, voicePreviewText(item.previewText)].filter(Boolean).join("\n\n") ||
   VOICE_MESSAGE_LABEL;
 
+function voiceProgressLabel(item: VoiceOutboxItem): string {
+  if (item.phase === "uploading") return "Uploading recording";
+  if (item.remoteStatus === "transcribing") return "Transcribing";
+  return item.queuePosition ? `Waiting, ${item.queuePosition} ahead` : "Waiting to transcribe";
+}
+
 export function voiceItemLabel(item: VoiceOutboxItem): string {
   if (item.phase === "no-speech") return "No speech found in the recording";
   if (item.phase === "failed") return item.error ?? "Transcription failed";
-  if (item.phase === "uploading") return "Uploading recording";
-  if (item.remoteStatus === "transcribing") return "Transcribing";
   if (item.remoteStatus === "sending") return "Sending message";
-  return item.queuePosition ? `Waiting, ${item.queuePosition} ahead` : "Waiting to transcribe";
+  const progress = voiceProgressLabel(item);
+  return item.heldMessage?.steers ? `${progress}, then sends` : progress;
 }
+
+export const voiceItemSteers = (item: VoiceOutboxItem) => item.heldMessage?.steers === true;
+
+/** A steering message can always be taken back, even if the agent stopped accepting steers. */
+export const canToggleVoiceSteering = (item: VoiceOutboxItem, agentAcceptsSteering: boolean) =>
+  item.remoteStatus !== "sending" && (agentAcceptsSteering || voiceItemSteers(item));
 
 /** While the agent works these would queue behind it, so they show there and not in the chat. */
 export function voiceQueueItems(

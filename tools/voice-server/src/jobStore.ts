@@ -41,6 +41,7 @@ export const isValidJobId = (id: string): boolean => JOB_ID_PATTERN.test(id);
 export class JobStore {
   private readonly root: string;
   private readonly jobs = new Map<string, Job>();
+  private writes: Promise<unknown> = Promise.resolve();
 
   constructor(root: string) {
     this.root = root;
@@ -112,12 +113,33 @@ export class JobStore {
     return job;
   }
 
-  async update(id: string, patch: Partial<Job>, now: number): Promise<Job> {
-    const current = this.jobs.get(id);
-    if (!current) throw new Error(`Unknown job ${id}`);
-    const next: Job = { ...current, ...patch, updatedAt: now };
-    await this.persist(next);
-    return next;
+  /** One write at a time: the worker and a phone's claim must not overwrite each other. */
+  update(
+    id: string,
+    patch: Partial<Job> | ((current: Job) => Partial<Job>),
+    now: number,
+  ): Promise<Job> {
+    const write = async () => {
+      const current = this.jobs.get(id);
+      if (!current) throw new Error(`Unknown job ${id}`);
+      const changes = typeof patch === "function" ? patch(current) : patch;
+      const next: Job = { ...current, ...changes, updatedAt: now };
+      await this.persist(next);
+      return next;
+    };
+    const result = this.writes.then(write, write);
+    this.writes = result.catch(() => {});
+    return result;
+  }
+
+  /** The phone takes over sending; false once this service started on it or gave up. */
+  async claim(id: string, now: number): Promise<boolean> {
+    const job = await this.update(
+      id,
+      ({ status }) => (status === "queued" || status === "transcribing" ? { mode: "draft" } : {}),
+      now,
+    );
+    return job.mode === "draft";
   }
 
   async remove(id: string): Promise<void> {

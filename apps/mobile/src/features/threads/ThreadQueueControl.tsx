@@ -11,7 +11,7 @@ import { Atom } from "effect/reactivity";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { useEffect, useRef, useState } from "react";
-import { Platform, Pressable, ScrollView, View } from "react-native";
+import { Alert, Platform, Pressable, ScrollView, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import ReanimatedSwipeable, {
   type SwipeableMethods,
@@ -25,6 +25,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { Menu } from "../../components/ui/Menu";
 import { ScreenContent } from "../../components/ui/ScreenContent";
+import { cn } from "../../lib/cn";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { NativeStackScreenOptions, nativeHeaderScrollEdgeEffects } from "../../native/StackHeader";
@@ -38,8 +39,13 @@ import { environmentThreadDetails, threadEnvironment } from "../../state/threads
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { VoiceItemStatus } from "../voice-input/VoiceMessageStatus";
-import { useVoiceOutboxItems } from "../voice-input/voiceOutboxRuntime";
-import { voiceItemText, voiceQueueItems } from "../voice-input/voiceThreadMessages";
+import { setVoiceSteering, useVoiceOutboxItems } from "../voice-input/voiceOutboxRuntime";
+import {
+  canToggleVoiceSteering,
+  voiceItemSteers,
+  voiceItemText,
+  voiceQueueItems,
+} from "../voice-input/voiceThreadMessages";
 import {
   REMOVE_QUEUED_MESSAGE_ACCESSIBILITY_LABEL,
   buildCancelQueuedRunCommand,
@@ -355,25 +361,11 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
                   </Pressable>
                 </Menu>
                 {workflow?.canPromoteToSteer || workflow?.canSendNow ? (
-                  // Outside the edit row and full row height, so a near miss never opens the editor.
-                  <Pressable
-                    accessibilityRole="button"
+                  <QueueSendButton
                     accessibilityLabel={`Send now, queued message ${index + 1}`}
                     disabled={!controls.canSend}
                     onPress={() => void act(run.id, "steer")}
-                    className="shrink-0 justify-center self-stretch pl-4 active:opacity-70 disabled:opacity-40"
-                  >
-                    <View className="min-h-9 flex-row items-center gap-1.5 rounded-full bg-primary px-4">
-                      <SymbolView
-                        name="arrow.up"
-                        size={13}
-                        tintColorClassName="accent-primary-foreground"
-                      />
-                      <Text className="font-t3-medium text-sm text-primary-foreground">
-                        Send now
-                      </Text>
-                    </View>
-                  </Pressable>
+                  />
                 ) : null}
               </View>
             </QueueRowSwipeable>
@@ -381,11 +373,32 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
         );
       })}
       {voiceQueue.map((item) => (
-        <View key={item.id} className="min-h-14 justify-center gap-1 border-b border-border py-2.5">
-          <Text className="text-sm text-foreground-muted" numberOfLines={1}>
-            {voiceItemText(item)}
-          </Text>
-          <VoiceItemStatus compact item={item} />
+        <View key={item.id} className="min-h-14 flex-row items-center border-b border-border">
+          <View className="min-w-0 flex-1 justify-center gap-1 py-2.5">
+            <Text className="text-sm text-foreground-muted" numberOfLines={1}>
+              {voiceItemText(item)}
+            </Text>
+            <VoiceItemStatus compact item={item} />
+          </View>
+          {canToggleVoiceSteering(item, workflow?.canPromoteToSteer ?? false) ? (
+            <QueueSendButton
+              accessibilityLabel={
+                voiceItemSteers(item)
+                  ? "Undo, keep this voice message in the queue"
+                  : "Send now, as soon as this voice message is transcribed"
+              }
+              undo={voiceItemSteers(item)}
+              onPress={() => {
+                void Haptics.selectionAsync();
+                setVoiceSteering(item, !voiceItemSteers(item), target).catch((error: unknown) =>
+                  Alert.alert(
+                    "Could not change this message",
+                    error instanceof Error ? error.message : String(error),
+                  ),
+                );
+              }}
+            />
+          ) : null}
         </View>
       ))}
     </ScrollView>
@@ -432,6 +445,45 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
         <ScreenContent insetHorizontal={layout.usesSplitView}>{content}</ScreenContent>
       </View>
     </GestureHandlerRootView>
+  );
+}
+
+/** Outside the edit row and full row height, so a near miss never opens the editor. */
+function QueueSendButton(props: {
+  readonly accessibilityLabel: string;
+  readonly disabled?: boolean;
+  readonly undo?: boolean;
+  readonly onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={props.accessibilityLabel}
+      disabled={props.disabled}
+      onPress={props.onPress}
+      className="shrink-0 justify-center self-stretch pl-4 active:opacity-70 disabled:opacity-40"
+    >
+      <View
+        className={cn(
+          "min-h-9 flex-row items-center gap-1.5 rounded-full px-4",
+          props.undo ? "bg-subtle" : "bg-primary",
+        )}
+      >
+        <SymbolView
+          name={props.undo ? "arrow.uturn.backward" : "arrow.up"}
+          size={13}
+          tintColorClassName={props.undo ? "accent-foreground" : "accent-primary-foreground"}
+        />
+        <Text
+          className={cn(
+            "font-t3-medium text-sm",
+            props.undo ? "text-foreground" : "text-primary-foreground",
+          )}
+        >
+          {props.undo ? "Undo" : "Send now"}
+        </Text>
+      </View>
+    </Pressable>
   );
 }
 
