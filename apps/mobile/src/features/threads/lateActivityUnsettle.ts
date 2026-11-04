@@ -1,7 +1,7 @@
 import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
 import { runAtomCommand } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
-import { threadActiveAfterSettling } from "@t3tools/client-runtime/state/threadSettled";
+import { threadActiveAfterSettling } from "@t3tools/client-runtime/state/thread-settled";
 
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { appAtomRegistry } from "../../state/atom-registry";

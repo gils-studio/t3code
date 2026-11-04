@@ -1,5 +1,5 @@
 import * as DateTime from "effect/DateTime";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 import { threadActiveAfterSettling } from "./threadSettled.ts";
 
@@ -18,7 +18,8 @@ function thread(overrides: {
       ? null
       : ({ updatedAt: DateTime.makeUnsafe(overrides.messageAt) } as never);
   return {
-    settledOverride: overrides.settledOverride === undefined ? "settled" : overrides.settledOverride,
+    settledOverride:
+      overrides.settledOverride === undefined ? "settled" : overrides.settledOverride,
     settledAt: overrides.settledAt === undefined ? SETTLED_AT : overrides.settledAt,
     archivedAt: overrides.archivedAt ?? null,
     latestRun: {
