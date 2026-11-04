@@ -13,7 +13,11 @@ export type VoiceLiveClient = {
 
 export type VoiceLivePreviewDependencies = {
   readonly getClient: () => VoiceLiveClient | null;
-  readonly readAudio: (uri: string, offset: number, maxBytes: number) => Promise<Uint8Array<ArrayBuffer>>;
+  readonly readAudio: (
+    uri: string,
+    offset: number,
+    maxBytes: number,
+  ) => Promise<Uint8Array<ArrayBuffer>>;
 };
 
 type Session = {

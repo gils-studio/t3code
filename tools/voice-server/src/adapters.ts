@@ -82,7 +82,10 @@ export const decodeToWav = (
  */
 export async function isSilent(config: Config, wav: string): Promise<boolean> {
   if (!config.vadModel) return false;
-  const tool = NodePath.join(NodePath.dirname(config.whisperCli), "whisper-vad-speech-segments.exe");
+  const tool = NodePath.join(
+    NodePath.dirname(config.whisperCli),
+    "whisper-vad-speech-segments.exe",
+  );
   const { stdout } = await run(tool, ["-vm", config.vadModel, "-f", wav, "--no-prints"], {
     timeoutMillis: 60_000,
     cwd: config.whisperCwd,
@@ -91,7 +94,11 @@ export async function isSilent(config: Config, wav: string): Promise<boolean> {
 }
 
 /** Lines are whisper segments: they keep their own leading space and can split a word. */
-const singleLine = (text: string) => text.split(/[\r\n]+/).join("").trim();
+const singleLine = (text: string) =>
+  text
+    .split(/[\r\n]+/)
+    .join("")
+    .trim();
 
 /** Prefers the warm server; the per-job CLI stays as the path that needs nothing running. */
 export class WhisperTranscriber implements Transcriber {
@@ -158,7 +165,9 @@ export class WhisperTranscriber implements Transcriber {
           },
         ),
       ]);
-      this.log(`transcribed ${Math.round(audioSeconds)} s of audio in ${Date.now() - startedAt} ms`);
+      this.log(
+        `transcribed ${Math.round(audioSeconds)} s of audio in ${Date.now() - startedAt} ms`,
+      );
       return silent ? "" : singleLine(text);
     } finally {
       await NodeFSP.rm(wav, { force: true });

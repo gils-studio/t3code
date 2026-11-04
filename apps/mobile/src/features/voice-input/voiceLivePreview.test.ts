@@ -4,9 +4,10 @@ import { VoiceLivePreview, voiceLiveTail, type VoiceLiveClient } from "./voiceLi
 
 function harness() {
   const audio = { bytes: new Uint8Array(0) };
-  const sendLiveAudio = vi.fn<VoiceLiveClient["sendLiveAudio"]>(
-    async (_id, offset, bytes) => ({ received: offset + bytes.length, text: `heard ${offset}` }),
-  );
+  const sendLiveAudio = vi.fn<VoiceLiveClient["sendLiveAudio"]>(async (_id, offset, bytes) => ({
+    received: offset + bytes.length,
+    text: `heard ${offset}`,
+  }));
   const preview = new VoiceLivePreview({
     getClient: () => ({ sendLiveAudio }),
     readAudio: async (_uri, offset) => audio.bytes.subarray(offset),

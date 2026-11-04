@@ -42,7 +42,10 @@ type Session = {
 
 /** Segments keep their own leading space and can end inside a word, so they are not joined by one. */
 const textOf = (segments: ReadonlyArray<SpeechSegment>) =>
-  segments.filter((segment) => withoutNoiseMarkers(segment.text).length > 0).map((segment) => segment.text).join("");
+  segments
+    .filter((segment) => withoutNoiseMarkers(segment.text).length > 0)
+    .map((segment) => segment.text)
+    .join("");
 
 /**
  * A preview of the words while they are spoken. It is strictly best effort: the
