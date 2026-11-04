@@ -340,7 +340,7 @@ describe("VoiceOutbox", () => {
       await h.outbox.poll();
       expect(h.heldMessages.release).toHaveBeenCalledWith(
         expect.objectContaining({ messageId: "message-1" }),
-        "typed\n\nWort",
+        "[Voice message]\n\ntyped\n\nWort",
       );
     });
 
