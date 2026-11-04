@@ -119,9 +119,9 @@ NodeTest.test("lets the phone take over sending until the service started on it"
   NodeAssert.equal((await claim("job-unknown")).status, 404);
   NodeAssert.equal((await claim("job-00002")).status, 200);
   NodeAssert.equal(store.get("job-00002")?.mode, "draft");
-  await store.update("job-00001", { status: "sending" }, 1);
-  NodeAssert.equal((await claim("job-00001")).status, 409);
-  NodeAssert.equal(store.get("job-00001")?.mode, "send");
+  await store.update("job-00002", { mode: "send", status: "sending" }, 1);
+  NodeAssert.equal((await claim("job-00002")).status, 409);
+  NodeAssert.equal(store.get("job-00002")?.mode, "send");
 });
 
 NodeTest.test("streams live audio and tells a phone that lost track where to resume", async () => {
