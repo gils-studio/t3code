@@ -110,9 +110,12 @@ export class LiveTranscriber {
       const session = [...this.sessions.values()].find((candidate) => candidate.hasNewAudio);
       if (!session || this.options.isBusy()) return;
       session.hasNewAudio = false;
-      await this.update(session).catch((error: unknown) =>
-        this.options.log?.(`live update failed for ${session.id}: ${String(error)}`),
-      );
+      await this.update(session).catch((error: unknown) => {
+        // The upload ending a session takes the files away from a running update.
+        if (this.sessions.has(session.id)) {
+          this.options.log?.(`live update failed for ${session.id}: ${String(error)}`);
+        }
+      });
     }
   }
 
@@ -142,9 +145,16 @@ export class LiveTranscriber {
         return;
       }
       const { segments } = await this.options.recognize(wav, session.language);
-      const last = segments.at(-1);
-      if (last && last.end > COMMIT_AFTER_SECONDS && segments.length > 1) {
-        this.advance(session, textOf(segments.slice(0, -1)), textOf([last]), last.start);
+      // A segment can begin inside a word, and a window must not start there.
+      const keepFrom = segments.findLastIndex((segment) => segment.text.startsWith(" "));
+      const keptStart = segments[keepFrom]?.start;
+      if ((segments.at(-1)?.end ?? 0) > COMMIT_AFTER_SECONDS && keepFrom > 0 && keptStart) {
+        this.advance(
+          session,
+          textOf(segments.slice(0, keepFrom)),
+          textOf(segments.slice(keepFrom)),
+          keptStart,
+        );
       } else {
         session.windowText = textOf(segments);
       }

@@ -52,12 +52,12 @@ NodeTest.test("appends in order and reports where a lost phone must resume", asy
 NodeTest.test("a long talk settles old words and only decodes the recent window", async () => {
   const { state, speak } = await harness([
     [segment(0, 4, " Hallo")],
-    [segment(0, 5, " Hallo Wel"), segment(5, 9, "t"), segment(9, 17, " und")],
-    [segment(0, 3, " und weiter")],
+    [segment(0, 9, " Hallo Welt"), segment(9, 14, " und wei"), segment(14, 17, "ter")],
+    [segment(0, 3, " und weiter so")],
   ]);
   NodeAssert.equal(await speak(), "Hallo");
-  NodeAssert.equal(await speak(), "Hallo Welt und");
   NodeAssert.equal(await speak(), "Hallo Welt und weiter");
+  NodeAssert.equal(await speak(), "Hallo Welt und weiter so");
   NodeAssert.deepEqual(state.starts, [0, 0, 9]);
 });
 

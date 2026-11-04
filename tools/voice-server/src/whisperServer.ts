@@ -23,6 +23,8 @@ const READY_POLL_MILLIS = 100;
 const WAV_BYTES_PER_SECOND = 32_000;
 const ENCODER_FRAMES_PER_SECOND = 50;
 const ENCODER_MAX_FRAMES = 1_500;
+/** Far below the 30 s it was trained on, whisper garbles speech instead of just getting faster. */
+const ENCODER_MIN_FRAMES = 1_024;
 const ENCODER_SPARE_FRAMES = 64;
 
 /** A hard-killed service leaves its children behind, still holding their port or subdomain. */
@@ -82,9 +84,10 @@ export class WhisperServer {
       if (options.preview) {
         const frames = (audio.length / WAV_BYTES_PER_SECOND) * ENCODER_FRAMES_PER_SECOND;
         form.set("beam_size", "1");
+        const needed = Math.ceil(frames) + ENCODER_SPARE_FRAMES;
         form.set(
           "audio_ctx",
-          String(Math.min(ENCODER_MAX_FRAMES, Math.ceil(frames) + ENCODER_SPARE_FRAMES)),
+          String(Math.min(ENCODER_MAX_FRAMES, Math.max(ENCODER_MIN_FRAMES, needed))),
         );
       }
       form.set("response_format", "verbose_json");
