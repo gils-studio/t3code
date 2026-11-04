@@ -43,8 +43,20 @@ export interface VoiceRecorder {
   stop(): Promise<void>;
 }
 
+export type VoiceRecordingDisposition = "draft" | "send";
+
+/** Takes over a recording so it outlives this screen, the app process and failed uploads. */
+export type VoiceRecordingHandoff = {
+  readonly recordingLimitSeconds: number;
+  recordingStarted(uri: string): void;
+  recordingFinished(uri: string, disposition: VoiceRecordingDisposition): void;
+  recordingDiscarded(uri: string): void;
+};
+
 export type VoiceInputControllerDependencies = {
   readonly recorder: VoiceRecorder;
+  /** Read at start; a handoff replaces on-device transcription for that recording. */
+  readonly getHandoff?: () => VoiceRecordingHandoff | null;
   readonly getTranscriber: () => VoiceTranscriber | null;
   readonly requestPermission: () => Promise<{
     readonly granted: boolean;
@@ -197,6 +209,8 @@ export class VoiceInputController {
   private capturedDraft: VoiceDraftSnapshot | null = null;
   private recordingUri: string | null = null;
   private readonly ownedRecordingUris = new Set<string>();
+  private readonly handedOffRecordingUris = new Set<string>();
+  private handoff: VoiceRecordingHandoff | null = null;
   private recordingConfigured = false;
   private finishing = false;
 
@@ -237,8 +251,10 @@ export class VoiceInputController {
       const abortController = new AbortController();
       this.transcriptionAbortController = abortController;
 
-      const transcriber = this.dependencies.getTranscriber();
-      if (!transcriber) {
+      const handoff = this.dependencies.getHandoff?.() ?? null;
+      this.handoff = handoff;
+      const transcriber = handoff ? null : this.dependencies.getTranscriber();
+      if (!handoff && !transcriber) {
         this.setError("Voice transcription is not available.", null);
         return;
       }
@@ -253,15 +269,18 @@ export class VoiceInputController {
         return;
       }
 
-      try {
-        this.transcription = await runTranscriptionOperation(() =>
-          transcriber.prepare({ signal: abortController.signal }),
-        );
-      } catch (error) {
-        if (this.isCurrent(operationToken)) this.setError(preparationErrorMessage(error), "retry");
-        return;
+      if (transcriber) {
+        try {
+          this.transcription = await runTranscriptionOperation(() =>
+            transcriber.prepare({ signal: abortController.signal }),
+          );
+        } catch (error) {
+          if (this.isCurrent(operationToken))
+            this.setError(preparationErrorMessage(error), "retry");
+          return;
+        }
+        if (!this.isCurrent(operationToken)) return;
       }
-      if (!this.isCurrent(operationToken)) return;
 
       await this.dependencies.configureRecording();
       this.recordingConfigured = true;
@@ -277,7 +296,10 @@ export class VoiceInputController {
         return;
       }
       this.capturedDraft = capturedDraft;
-      this.dependencies.recorder.record({ forDuration: VOICE_RECORDING_LIMIT_SECONDS });
+      if (handoff && this.recordingUri) handoff.recordingStarted(this.recordingUri);
+      this.dependencies.recorder.record({
+        forDuration: handoff?.recordingLimitSeconds ?? VOICE_RECORDING_LIMIT_SECONDS,
+      });
       this.setState({ phase: "recording", error: null, errorAction: null });
     } catch {
       if (this.isCurrent(operationToken))
@@ -293,9 +315,9 @@ export class VoiceInputController {
     }
   }
 
-  stop(): Promise<void> {
+  stop(disposition: VoiceRecordingDisposition = "draft"): Promise<void> {
     if (this.state.phase !== "recording") return Promise.resolve();
-    return this.finishRecording(false, null);
+    return this.finishRecording(false, null, disposition);
   }
 
   cancel(): void {
@@ -324,6 +346,7 @@ export class VoiceInputController {
     completedUri: string | null = null,
   ): Promise<void> | void {
     if (this.state.phase !== "recording") return;
+    if (this.handoff) return this.finishRecording(completedUri !== null, completedUri, "draft");
     this.rememberRecordingUri(completedUri);
     this.recordingUri = completedUri ?? this.recordingUri;
     return this.discardRecording(message);
@@ -350,7 +373,7 @@ export class VoiceInputController {
       if (!status.url) {
         return this.interruptRecording();
       }
-      return this.finishRecording(true, status.url);
+      return this.finishRecording(true, status.url, "draft");
     }
   }
 
@@ -361,6 +384,10 @@ export class VoiceInputController {
 
   dispose(): void {
     if (this.state.phase === "recording") {
+      if (this.handoff) {
+        void this.finishRecording(false, null, "draft");
+        return;
+      }
       this.discardRecording(null);
       return;
     }
@@ -373,11 +400,17 @@ export class VoiceInputController {
   private async finishRecording(
     alreadyStopped: boolean,
     completedUri: string | null,
+    disposition: VoiceRecordingDisposition,
   ): Promise<void> {
     if (this.finishing || this.state.phase !== "recording") return;
     this.finishing = true;
     const operationToken = this.operationToken;
     this.setState({ phase: "transcribing", error: null, errorAction: null });
+
+    if (this.handoff) {
+      await this.handOffRecording(this.handoff, alreadyStopped, completedUri, disposition);
+      return;
+    }
 
     try {
       if (!alreadyStopped) await this.dependencies.recorder.stop();
@@ -442,6 +475,29 @@ export class VoiceInputController {
     }
   }
 
+  /** A recorder failure must not cost the audio captured so far, so stop errors are ignored. */
+  private async handOffRecording(
+    handoff: VoiceRecordingHandoff,
+    alreadyStopped: boolean,
+    completedUri: string | null,
+    disposition: VoiceRecordingDisposition,
+  ): Promise<void> {
+    try {
+      if (!alreadyStopped) await this.dependencies.recorder.stop().catch(() => {});
+      await this.releaseAudioSession();
+      const uri = completedUri ?? this.recordingUri ?? this.dependencies.recorder.uri;
+      if (uri) {
+        this.handedOffRecordingUris.add(uri);
+        this.ownedRecordingUris.delete(uri);
+        handoff.recordingFinished(uri, disposition);
+      }
+      this.setState(IDLE_STATE);
+    } finally {
+      this.finishing = false;
+      await this.releaseResources();
+    }
+  }
+
   private async discardRecording(error: string | null): Promise<void> {
     this.invalidateOperation();
     this.setState(
@@ -467,18 +523,20 @@ export class VoiceInputController {
       try {
         this.dependencies.deleteRecording(uri);
       } catch {}
+      this.handoff?.recordingDiscarded(uri);
     }
     this.ownedRecordingUris.clear();
     await this.releaseAudioSession();
     releaseSession(this.sessionToken);
     this.sessionToken = null;
     this.capturedDraft = null;
+    this.handoff = null;
     this.transcription = null;
     this.transcriptionAbortController = null;
   }
 
   private rememberRecordingUri(uri: string | null): void {
-    if (uri) this.ownedRecordingUris.add(uri);
+    if (uri && !this.handedOffRecordingUris.has(uri)) this.ownedRecordingUris.add(uri);
   }
 
   private async releaseAudioSession(): Promise<void> {

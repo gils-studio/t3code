@@ -6,6 +6,7 @@ import {
   type VoiceInputControllerDependencies,
   type VoiceInputPhase,
   type VoiceInputState,
+  type VoiceRecordingHandoff,
 } from "@t3tools/client-runtime/voice-input";
 
 import { normalizeVoiceInputDecibels, VOICE_WAVEFORM_SAMPLE_COUNT } from "./voiceInputMetering";
@@ -20,6 +21,7 @@ export type VoiceInputTarget = {
   readonly readDraft: () => VoiceDraftSnapshot | null;
   readonly commitDraft: VoiceInputControllerDependencies["commitDraft"];
   readonly subscribe: () => () => void;
+  readonly handoff?: VoiceRecordingHandoff | null;
 };
 
 export type VoiceInputSnapshot = {
@@ -101,6 +103,7 @@ export class VoiceInputSession {
     this.dependencies = dependencies;
     this.controller = new VoiceInputController({
       ...dependencies,
+      getHandoff: () => this.target?.handoff ?? null,
       onStateChange: (state) => this.handleStateChange(state),
       readDraft: () => this.target?.readDraft() ?? null,
       commitDraft: (text, selection) => this.target?.commitDraft(text, selection),
@@ -203,7 +206,7 @@ export class VoiceInputSession {
     }
 
     const elapsedSeconds = Math.min(
-      VOICE_RECORDING_LIMIT_SECONDS,
+      this.target?.handoff?.recordingLimitSeconds ?? VOICE_RECORDING_LIMIT_SECONDS,
       Math.max(0, Math.floor(sample.durationMillis / 1_000)),
     );
     if (elapsedSeconds !== this.snapshot.elapsedSeconds) {

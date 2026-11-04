@@ -21,6 +21,7 @@ import {
   type VoiceTranscriber,
 } from "@t3tools/client-runtime/voice-input";
 import { createLazyVoiceRecorder } from "./lazyVoiceRecorder";
+import { getVoiceServer, subscribeVoiceServer, useVoiceServer } from "./voiceOutboxRuntime";
 import { VOICE_WAVEFORM_SAMPLE_COUNT } from "./voiceInputMetering";
 import { VoiceInputSession } from "./voiceInputSession";
 import { createVoiceRecordingPermission } from "./voiceRecordingPermission";
@@ -42,6 +43,17 @@ const VOICE_RECORDING_OPTIONS = {
   isMeteringEnabled: true,
   ...(Platform.OS === "ios" ? IOS_RECORDING_OPTIONS : ANDROID_RECORDING_OPTIONS),
 };
+
+// ADTS has no trailer, so audio written before a crash or kill stays decodable.
+const VOICE_SERVER_RECORDING_OPTIONS = {
+  ...VOICE_RECORDING_OPTIONS,
+  extension: ".aac",
+  sampleRate: 16_000,
+  numberOfChannels: 1,
+  bitRate: 48_000,
+  outputFormat: "aac_adts",
+  audioEncoder: "aac",
+} as const;
 
 function keepScreenAwake(tag: string): () => void {
   const activation = activateKeepAwakeAsync(tag);
@@ -87,7 +99,10 @@ const voiceInputAtom = Atom.make((get) => {
     void session.controller.appMovedToBackground();
   });
   const recorder = createLazyVoiceRecorder({
-    create: () => new AudioModule.AudioRecorder(VOICE_RECORDING_OPTIONS),
+    create: () =>
+      new AudioModule.AudioRecorder(
+        getVoiceServer() ? VOICE_SERVER_RECORDING_OPTIONS : VOICE_RECORDING_OPTIONS,
+      ),
     onStatus: (status: RecordingStatus) => {
       session.controller.handleRecorderStatus({
         isFinished: status.isFinished,
@@ -143,7 +158,10 @@ const voiceInputAtom = Atom.make((get) => {
     publishAudioLevels: (levels) => audioLevels.set(levels),
     keepAwake: () => keepScreenAwake(`voice-input:${++keepAwakeSequence}`),
   });
+  // The format is fixed at construction, so the next recording builds a matching recorder.
+  const unsubscribeServer = subscribeVoiceServer(() => recorder.release());
   get.addFinalizer(() => {
+    unsubscribeServer();
     permission.dispose();
     session.dispose();
     recorder.release();
@@ -155,13 +173,16 @@ export function useGlobalVoiceInput() {
   const { session, audioLevels } = useAtomValue(voiceInputAtom);
   const isTranscriberAvailable = useAtomValue(localVoiceInputAvailableAtom);
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot);
+  const server = useVoiceServer();
   return {
     ...snapshot,
     isAvailable: isTranscriberAvailable || getNativeShowcaseScene() !== null,
+    server,
     audioLevels,
     isBusy: voiceInputBlocksSubmission(snapshot.state),
     session,
     stop: () => session.controller.stop(),
+    send: () => session.controller.stop("send"),
     cancel: () => session.controller.cancel(),
   };
 }

@@ -1,0 +1,113 @@
+import * as Linking from "expo-linking";
+import { useSyncExternalStore } from "react";
+import { Alert, AppState } from "react-native";
+
+import { uuidv4 } from "../../lib/uuid";
+import { voiceUploadSupported } from "../../native/voiceUpload";
+import {
+  flushComposerDrafts,
+  getComposerDraftSnapshot,
+  setComposerDraftText,
+} from "../../state/use-composer-drafts";
+import { VoiceOutbox, type VoiceServerClient } from "./voiceOutbox";
+import { voiceOutboxFileStore } from "./voiceOutboxStore";
+import {
+  createVoiceServerClient,
+  deleteVoiceServerConfig,
+  fetchVoiceServerConfig,
+  isVoicePairLink,
+  parseVoicePairLink,
+  readVoiceServerConfig,
+  writeVoiceServerConfig,
+  type VoiceServerConfig,
+} from "./voiceServer";
+
+let server: VoiceServerConfig | null = null;
+let client: VoiceServerClient | null = null;
+let started = false;
+const serverListeners = new Set<() => void>();
+
+function deviceLanguage(): string {
+  const language = Intl.DateTimeFormat().resolvedOptions().locale.split("-")[0] ?? "";
+  return /^[a-z]{2,3}$/.test(language) ? language : "auto";
+}
+
+/** Flushed before returning so the outbox can safely forget the recording. */
+async function appendDraftText(ownerKey: string, text: string): Promise<void> {
+  await flushComposerDrafts();
+  const current = getComposerDraftSnapshot(ownerKey).text;
+  // A crash after the text landed retries this; the same words must not appear twice.
+  if (current.includes(text)) return;
+  setComposerDraftText(ownerKey, current ? `${current.trimEnd()}\n\n${text}` : text);
+  await flushComposerDrafts();
+}
+
+export const voiceOutbox = new VoiceOutbox({
+  store: voiceOutboxFileStore,
+  getClient: () => client,
+  appendDraft: appendDraftText,
+  newId: () => `voice-${uuidv4()}`,
+  language: deviceLanguage,
+  now: Date.now,
+});
+
+function applyServer(config: VoiceServerConfig | null): void {
+  server = config;
+  client = config ? createVoiceServerClient(config) : null;
+  for (const listener of serverListeners) listener();
+  voiceOutbox.resumeUploads();
+}
+
+export const getVoiceServer = () => server;
+
+export function subscribeVoiceServer(listener: () => void): () => void {
+  serverListeners.add(listener);
+  return () => void serverListeners.delete(listener);
+}
+
+export const useVoiceServer = () => useSyncExternalStore(subscribeVoiceServer, getVoiceServer);
+
+export const useVoiceOutboxItems = () =>
+  useSyncExternalStore(voiceOutbox.subscribe, voiceOutbox.getSnapshot);
+
+export async function pairVoiceServer(link: string): Promise<void> {
+  const pairing = parseVoicePairLink(link);
+  if (!pairing) throw new Error("This is not a voice server link.");
+  const config = await fetchVoiceServerConfig(pairing);
+  await writeVoiceServerConfig(config);
+  applyServer(config);
+}
+
+/** Recordings still in the outbox stay there and continue after pairing again. */
+export async function forgetVoiceServer(): Promise<void> {
+  await deleteVoiceServerConfig();
+  applyServer(null);
+}
+
+function handlePairLink(link: string | null): void {
+  if (!link || !isVoicePairLink(link)) return;
+  pairVoiceServer(link).then(
+    () => Alert.alert("Voice server connected", "Recordings now transcribe on your computer."),
+    (error: unknown) =>
+      Alert.alert(
+        "Could not connect the voice server",
+        error instanceof Error ? error.message : String(error),
+      ),
+  );
+}
+
+/** Runs at launch, not with the first composer: waiting recordings must not depend on navigation. */
+export function startVoiceOutbox(): void {
+  if (started || !voiceUploadSupported) return;
+  started = true;
+  voiceOutbox.setForeground(AppState.currentState === "active");
+  AppState.addEventListener("change", (state) => voiceOutbox.setForeground(state === "active"));
+  Linking.addEventListener("url", ({ url }) => handlePairLink(url));
+  void Linking.getInitialURL().then(handlePairLink);
+  void readVoiceServerConfig()
+    .catch(() => null)
+    .then((config) => {
+      if (config && server === null) applyServer(config);
+      return voiceOutbox.recover();
+    });
+}

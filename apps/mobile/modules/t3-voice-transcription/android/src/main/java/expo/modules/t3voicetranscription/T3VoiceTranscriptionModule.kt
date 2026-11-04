@@ -74,6 +74,17 @@ class T3VoiceTranscriptionModule : Module() {
       }
     }
 
+    Function("enqueueUpload") {
+        id: String,
+        audioUri: String,
+        metaUri: String,
+        url: String,
+        token: String
+      ->
+      val context = requireNotNull(appContext.reactContext)
+      VoiceUploadWorker.enqueue(context, id, audioUri, metaUri, url, token)
+    }
+
     OnDestroy { scope.cancel() }
   }
 

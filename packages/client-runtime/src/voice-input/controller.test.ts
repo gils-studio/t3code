@@ -114,6 +114,60 @@ describe("resolveTranscriptCommit", () => {
 describe("VoiceInputController", () => {
   beforeEach(() => resetVoiceInputGlobalsForTests());
 
+  describe("with a recording handoff", () => {
+    function handoffHarness() {
+      const events: string[] = [];
+      const handoff = {
+        recordingLimitSeconds: 1800,
+        recordingStarted: (uri: string) => events.push(`started ${uri}`),
+        recordingFinished: (uri: string, disposition: string) =>
+          events.push(`finished ${uri} ${disposition}`),
+        recordingDiscarded: (uri: string) => events.push(`discarded ${uri}`),
+      };
+      const harness = createHarness({ getHandoff: () => handoff, getTranscriber: () => null });
+      return { ...harness, events };
+    }
+
+    it("hands a sent recording over without transcribing or deleting it", async () => {
+      const harness = handoffHarness();
+      await harness.controller.start();
+      expect(harness.recorder.record).toHaveBeenCalledWith({ forDuration: 1800 });
+      await harness.controller.stop("send");
+
+      expect(harness.events).toEqual([
+        "started file:///voice.m4a",
+        "finished file:///voice.m4a send",
+      ]);
+      expect(harness.deleted).toEqual([]);
+      expect(harness.controller.currentState.phase).toBe("idle");
+    });
+
+    it.each([
+      ["moving to the background", (c: VoiceInputController) => c.appMovedToBackground()],
+      [
+        "a recorder error",
+        (c: VoiceInputController) =>
+          c.handleRecorderStatus({ isFinished: false, hasError: true, error: "x", url: null }),
+      ],
+      ["disposal", (c: VoiceInputController) => c.dispose()],
+    ])("keeps the audio after %s", async (_name, interrupt) => {
+      const harness = handoffHarness();
+      await harness.controller.start();
+      harness.recorder.stop.mockRejectedValueOnce(new Error("recorder gone"));
+      await interrupt(harness.controller);
+      await vi.waitFor(() => expect(harness.events).toContain("finished file:///voice.m4a draft"));
+      expect(harness.deleted).toEqual([]);
+    });
+
+    it("discards only when the user cancels", async () => {
+      const harness = handoffHarness();
+      await harness.controller.start();
+      harness.controller.cancel();
+      await vi.waitFor(() => expect(harness.events).toContain("discarded file:///voice.m4a"));
+      expect(harness.deleted).toEqual(["file:///voice.m4a"]);
+    });
+  });
+
   it("checks support and permission before recording", async () => {
     const unsupported = createHarness({ getTranscriber: () => null });
     await unsupported.controller.start();

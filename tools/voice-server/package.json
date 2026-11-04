@@ -1,0 +1,11 @@
+{
+  "name": "t3-voice-server",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "start": "node src/main.ts",
+    "pair": "node src/main.ts pair",
+    "test": "node --test test/*.test.ts"
+  }
+}

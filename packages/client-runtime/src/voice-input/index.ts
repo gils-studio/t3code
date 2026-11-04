@@ -8,6 +8,8 @@ export {
   type VoiceInputState,
   type VoiceRecorder,
   type VoiceRecorderStatus,
+  type VoiceRecordingDisposition,
+  type VoiceRecordingHandoff,
 } from "./controller.ts";
 export {
   VoiceTranscriptionError,
