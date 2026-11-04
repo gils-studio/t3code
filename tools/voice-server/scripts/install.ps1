@@ -50,7 +50,7 @@ if (-not (Test-Path $configPath)) {
 
 $vocabularyPath = Join-Path $home_ "vocabulary.json"
 if (-not (Test-Path $vocabularyPath)) {
-  Copy-Item (Join-Path $PSScriptRoot "..ocabulary.example.json") $vocabularyPath
+  Copy-Item (Join-Path $PSScriptRoot "..\vocabulary.example.json") $vocabularyPath
 }
 
 $node = (Get-Command node).Source
