@@ -28,6 +28,13 @@ const DEFAULT_RETENTION_MILLIS = 14 * 24 * 60 * 60_000;
 export const retryDelayMillis = (attempts: number): number =>
   Math.min(MAX_RETRY_MILLIS, BASE_RETRY_MILLIS * 2 ** Math.max(0, attempts - 1));
 
+/** Whisper labels silence and noise, as in "* Musik *"; only a text of nothing else is empty. */
+const ONLY_NOISE_MARKERS = /^(?:\s*(?:\*[^*]*\*|\[[^\]]*\]|\([^)]*\)))+\s*$/;
+
+function withoutNoiseMarkers(transcript: string): string {
+  return ONLY_NOISE_MARKERS.test(transcript) ? "" : transcript.trim();
+}
+
 export const composeMessage = (prefixText: string, transcript: string): string =>
   [prefixText.trim(), transcript.trim()].filter((part) => part.length > 0).join("\n\n");
 
@@ -125,7 +132,7 @@ export class Worker {
     const started = await store.update(job.id, { status: "transcribing" }, this.now());
     let transcript: string;
     try {
-      transcript = (await this.options.transcriber.transcribe(started)).trim();
+      transcript = withoutNoiseMarkers(await this.options.transcriber.transcribe(started));
     } catch (error) {
       const attempts = started.attempts + 1;
       this.options.log?.(`transcription failed for ${job.id}: ${String(error)}`);

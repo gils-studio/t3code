@@ -2,7 +2,7 @@
 
 Transcribes recordings from the Android app on this computer's GPU with whisper.cpp. It runs next to T3 Code and changes nothing in it: messages go out through the `t3` CLI, so a busy thread gets them as its next turn.
 
-Needs Node 24, ffmpeg, a whisper.cpp build and a model such as `ggml-large-v3-turbo-q5_0.bin`.
+Needs Node 24, ffmpeg, a whisper.cpp build and a model such as `ggml-large-v3-turbo-q5_0.bin`. Pass a Silero model with `-VadModel` (for example `ggml-silero-v6.2.0.bin`) so a recording without speech is not turned into invented text and sent.
 
 ## Install (Windows)
 

@@ -4,6 +4,7 @@ param(
   [Parameter(Mandatory)] [string] $WhisperDirectory,
   [Parameter(Mandatory)] [string] $Model,
   [Parameter(Mandatory)] [string] $Ffmpeg,
+  [string] $VadModel = "",
   [string] $T3Command = "t3",
   [int] $Port = 4791,
   [string] $TunnelName = "t3-voice",
@@ -40,6 +41,7 @@ if (-not (Test-Path $configPath)) {
     whisperCwd  = $WhisperDirectory
     whisperArgs = @("-mc", "0", "-bs", "5")
     model       = $Model
+    vadModel    = $VadModel
     ffmpeg      = $Ffmpeg
     t3Command   = $T3Command
     prompt      = $Prompt

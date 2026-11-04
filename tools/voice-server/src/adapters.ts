@@ -1,5 +1,6 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFSP from "node:fs/promises";
+import * as NodePath from "node:path";
 
 import type { Config } from "./config.ts";
 import type { Job, JobStore } from "./jobStore.ts";
@@ -42,6 +43,12 @@ function run(
   });
 }
 
+const SPEECH_SEGMENTS = /Detected ([0-9]+) speech segments/;
+
+/** Anything but a clear zero counts as speech: a stray transcript beats lost words. */
+export const foundNoSpeech = (vadOutput: string): boolean =>
+  SPEECH_SEGMENTS.exec(vadOutput)?.[1] === "0";
+
 /** whisper.cpp runs per job and exits, so nothing stays in RAM or VRAM between dictations. */
 export class WhisperTranscriber implements Transcriber {
   private readonly config: Config;
@@ -50,6 +57,23 @@ export class WhisperTranscriber implements Transcriber {
   constructor(config: Config, store: JobStore) {
     this.config = config;
     this.store = store;
+  }
+
+  /**
+   * Whisper invents subtitle credits for silence. VAD only gates the run, because
+   * whisper's own --vad drops words next to its cut points.
+   */
+  private async isSilent(wav: string): Promise<boolean> {
+    if (!this.config.vadModel) return false;
+    const tool = NodePath.join(
+      NodePath.dirname(this.config.whisperCli),
+      "whisper-vad-speech-segments.exe",
+    );
+    const { stdout } = await run(tool, ["-vm", this.config.vadModel, "-f", wav, "--no-prints"], {
+      timeoutMillis: 60_000,
+      cwd: this.config.whisperCwd,
+    }).catch(() => ({ stdout: "" }));
+    return foundNoSpeech(stdout);
   }
 
   async transcribe(job: Job): Promise<string> {
@@ -74,6 +98,7 @@ export class WhisperTranscriber implements Transcriber {
       );
       const { size } = await NodeFSP.stat(wav);
       const audioSeconds = size / 32_000;
+      if (await this.isSilent(wav)) return "";
       const startedAt = Date.now();
       await run(
         this.config.whisperCli,

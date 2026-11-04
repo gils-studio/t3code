@@ -4,6 +4,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeTest from "node:test";
 
+import { foundNoSpeech } from "../src/adapters.ts";
 import { JobStore, type JobMeta } from "../src/jobStore.ts";
 import { composeMessage, Worker, type ThreadSender, type Transcriber } from "../src/worker.ts";
 
@@ -166,12 +167,32 @@ NodeTest.test("a crash during transcription resumes, and a crash after sending d
 });
 
 NodeTest.test("nothing is sent when no speech was found", async () => {
+  for (const silence of ["  ", "* Musik *", " [BLANK_AUDIO] (Stille) "]) {
+    const sent: string[] = [];
+    const { store, worker, add } = await harness({ transcribe: async () => silence }, sender(sent));
+    await add("job-00008");
+    await worker.runNext();
+    NodeAssert.deepEqual(sent, []);
+    NodeAssert.equal(store.get("job-00008")?.status, "done");
+    NodeAssert.equal(store.get("job-00008")?.transcript, "");
+  }
+});
+
+NodeTest.test("speech next to a noise marker is kept whole", async () => {
   const sent: string[] = [];
-  const { store, worker, add } = await harness({ transcribe: async () => "  " }, sender(sent));
-  await add("job-00008");
+  const { worker, add } = await harness(
+    { transcribe: async () => "* Musik * Hallo (leise)" },
+    sender(sent),
+  );
+  await add("job-00009");
   await worker.runNext();
-  NodeAssert.deepEqual(sent, []);
-  NodeAssert.equal(store.get("job-00008")?.status, "done");
+  NodeAssert.deepEqual(sent, ["* Musik * Hallo (leise)"]);
+});
+
+NodeTest.test("only a clear zero from the VAD counts as silence", () => {
+  NodeAssert.equal(foundNoSpeech("Detected 0 speech segments:"), true);
+  NodeAssert.equal(foundNoSpeech("Detected 3 speech segments:"), false);
+  NodeAssert.equal(foundNoSpeech(""), false);
 });
 
 NodeTest.test("typed draft text goes ahead of the transcript", () => {

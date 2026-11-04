@@ -13,6 +13,7 @@ export type Config = {
   readonly whisperCli: string;
   readonly whisperCwd: string;
   readonly whisperArgs: ReadonlyArray<string>;
+  readonly vadModel?: string;
   readonly model: string;
   readonly ffmpeg: string;
   readonly t3Command: string;
