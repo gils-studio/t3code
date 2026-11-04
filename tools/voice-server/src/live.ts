@@ -89,7 +89,7 @@ export class LiveTranscriber {
 
   /** A discarded recording just stops talking to us, so its audio goes away on a timer. */
   async purgeIdle(): Promise<void> {
-    for (const session of [...this.sessions.values()]) {
+    for (const session of this.sessions.values()) {
       if (this.now() - session.lastSeenAt > SESSION_TIMEOUT_MILLIS) await this.end(session.id);
     }
   }

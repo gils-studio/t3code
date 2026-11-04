@@ -1,7 +1,7 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
-import * as NodeTimers from "node:timers/promises";
+import * as NodeTimersPromises from "node:timers/promises";
 
 import type { Config } from "./config.ts";
 
@@ -164,7 +164,7 @@ export class WhisperServer {
         this.log(`whisper-server ready after ${Date.now() - startedAt} ms`);
         return;
       }
-      await NodeTimers.setTimeout(READY_POLL_MILLIS);
+      await NodeTimersPromises.setTimeout(READY_POLL_MILLIS);
     }
     throw new Error("whisper-server did not start in time");
   }

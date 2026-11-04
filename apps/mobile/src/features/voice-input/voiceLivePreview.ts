@@ -6,14 +6,14 @@ export type VoiceLiveClient = {
   sendLiveAudio(
     id: string,
     offset: number,
-    bytes: Uint8Array,
+    bytes: Uint8Array<ArrayBuffer>,
     language: string,
   ): Promise<{ readonly received: number; readonly text: string }>;
 };
 
 export type VoiceLivePreviewDependencies = {
   readonly getClient: () => VoiceLiveClient | null;
-  readonly readAudio: (uri: string, offset: number, maxBytes: number) => Promise<Uint8Array>;
+  readonly readAudio: (uri: string, offset: number, maxBytes: number) => Promise<Uint8Array<ArrayBuffer>>;
 };
 
 type Session = {
