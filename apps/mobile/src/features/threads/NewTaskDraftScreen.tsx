@@ -76,6 +76,11 @@ import {
 } from "../../lib/modelOptions";
 import { enqueueThreadOutboxMessage } from "../../state/thread-outbox";
 import {
+  holdVoiceThreadMessage,
+  useVoiceThreadStart,
+  type VoiceThreadStart,
+} from "../voice-input/voiceOutboxRuntime";
+import {
   useRemoteConnections,
   useRemoteEnvironmentRuntime,
 } from "../../state/use-remote-environment-registry";
@@ -556,7 +561,12 @@ export function NewTaskDraftScreen(props: {
     locked: isComposerInteractionLocked,
   });
 
-  async function handleStart(): Promise<import("@t3tools/contracts").MessageId | null> {
+  const handleStart = () => startTask();
+  useVoiceThreadStart(flow.draftKey, (voice) => void startTask(voice));
+
+  async function startTask(
+    voice?: VoiceThreadStart,
+  ): Promise<import("@t3tools/contracts").MessageId | null> {
     const selectedProject = flow.selectedProject;
     const draftKey = flow.draftKey;
     if (
@@ -591,7 +601,7 @@ export function NewTaskDraftScreen(props: {
     if (
       attachmentBlockReason !== null ||
       !modelSelection ||
-      (initialMessageText.length === 0 && draft.attachments.length === 0) ||
+      (initialMessageText.length === 0 && draft.attachments.length === 0 && !voice) ||
       flow.submitting ||
       (workspaceMode === "worktree" && !selectedBranchName)
     ) {
@@ -647,13 +657,18 @@ export function NewTaskDraftScreen(props: {
 
     const message = flow.buildPendingTaskMessage(creationMetadata, {
       currentCheckoutBranch: queuesInsteadOfStarting ? null : flow.currentCheckoutBranchName,
+      ...(voice ? { voice } : {}),
     });
     if (!message) {
       return null;
     }
     // Persist locally before clearing or leaving the draft; server setup runs on the thread.
     flow.setSubmitting(true);
-    const queued = await settlePromise(() => enqueueThreadOutboxMessage(message));
+    const queued = await settlePromise(async () => {
+      if (voice) return holdVoiceThreadMessage(voice, draftKey, draft.text.trim(), message);
+      await enqueueThreadOutboxMessage(message);
+      return true;
+    });
     flow.setSubmitting(false);
     if (AsyncResult.isFailure(queued)) {
       const error = squashAtomCommandFailure(queued);
@@ -663,6 +678,8 @@ export function NewTaskDraftScreen(props: {
       );
       return null;
     }
+    // The transcript came first, so it took the usual way through the draft.
+    if (!queued.value) return null;
     promptInputRef.current?.blur();
     navigation.dispatch(
       CommonActions.setParams(

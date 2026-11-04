@@ -59,6 +59,7 @@ export const QueuedThreadMessageSchema = Schema.Struct({
   runtimeMode: Schema.optional(RuntimeMode),
   interactionMode: Schema.optional(ProviderInteractionMode),
   creation: Schema.optional(QueuedThreadCreationSchema),
+  awaitingVoiceId: Schema.optional(Schema.String),
   createdAt: IsoDateTime,
 });
 
@@ -90,6 +91,8 @@ export interface QueuedThreadMessage {
   /** Captured at enqueue because draining may occur long after the tap. */
   readonly dispatchMode?: ComposerDispatchMode;
   readonly creation?: QueuedThreadCreation;
+  /** Not delivered until the transcript of this recording has replaced the text. */
+  readonly awaitingVoiceId?: string;
   readonly createdAt: string;
 }
 

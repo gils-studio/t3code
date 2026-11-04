@@ -15,6 +15,17 @@ export type VoiceJob = {
 
 export type VoiceOutboxPhase = "recording" | "uploading" | "processing" | "no-speech" | "failed";
 
+/** The first message of a new chat, waiting in the thread outbox for this transcript. */
+export type VoiceHeldMessage = {
+  readonly environmentId: string;
+  readonly threadId: string;
+  readonly messageId: string;
+  /** Where the text goes if the message is gone, say because the chat was deleted. */
+  readonly draftKey: string;
+  /** Once set, a missing message most likely went out already. */
+  readonly releasing?: boolean;
+};
+
 export type VoiceOutboxItem = {
   readonly id: string;
   readonly ownerKey: string;
@@ -22,6 +33,7 @@ export type VoiceOutboxItem = {
   readonly mode: VoiceRecordingDisposition;
   /** Without a thread the service cannot send, so an open composer sends the finished draft. */
   readonly submitDraft: boolean;
+  readonly heldMessage?: VoiceHeldMessage;
   readonly prefixText: string;
   readonly language: string;
   /** Set until the audio has moved into outbox storage. */
@@ -57,10 +69,18 @@ export type VoiceOutboxDependencies = {
   readonly appendDraft: (ownerKey: string, text: string) => Promise<void>;
   /** Without a composer listening the text simply stays in the draft. */
   readonly submitDraft: (ownerKey: string) => void;
+  /** An open new-chat screen answers by moving to a thread, see holdThreadMessage. */
+  readonly startThread: (ownerKey: string, id: string, previewText: string) => void;
+  readonly heldMessages: {
+    /** False when the message no longer exists. */
+    release(held: VoiceHeldMessage, text: string): Promise<boolean>;
+    remove(held: VoiceHeldMessage): Promise<void>;
+  };
   /** Shows the words while they are spoken; the recording never depends on it. */
   readonly live: {
     start(id: string, uri: string, language: string): void;
     stop(): void;
+    getText(): string;
   };
   readonly newId: () => string;
   readonly language: () => string;
@@ -74,6 +94,9 @@ export type VoiceHandoffTarget = {
   readonly readDraftText: () => string;
   readonly clearDraftText: () => void;
 };
+
+const withTranscript = (prefixText: string, transcript: string) =>
+  prefixText ? `${prefixText.trimEnd()}\n\n${transcript}` : transcript;
 
 const isInFlight = (item: VoiceOutboxItem) =>
   item.phase === "uploading" || item.phase === "processing";
@@ -163,6 +186,7 @@ export class VoiceOutbox {
         const mode = target.threadId === null ? "draft" : disposition;
         const prefixText = mode === "send" ? target.readDraftText() : "";
         void this.enqueue(async () => {
+          const previewText = this.dependencies.live.getText();
           this.dependencies.live.stop();
           if (id === null) await begin(uri);
           const item = this.items.get(id!);
@@ -173,6 +197,7 @@ export class VoiceOutbox {
           await this.persist(finished);
           if (mode === "send") target.clearDraftText();
           await this.deliver(finished);
+          if (submitDraft) this.dependencies.startThread(target.ownerKey, id!, previewText);
         });
       },
       recordingDiscarded: () => {
@@ -182,6 +207,38 @@ export class VoiceOutbox {
         });
       },
     };
+  }
+
+  /**
+   * Ties a recording to the first message of a new chat, so nobody has to wait
+   * for the transcript. The link is stored first: a crash in between leaves a
+   * recording without a message, which ends up in the draft, never the reverse.
+   */
+  holdThreadMessage(
+    id: string,
+    held: VoiceHeldMessage,
+    ownerKey: string,
+    prefixText: string,
+    enqueueMessage: () => Promise<void>,
+  ): Promise<boolean> {
+    return this.enqueue(async () => {
+      const item = this.items.get(id);
+      if (!item?.submitDraft) return false;
+      await this.persist({
+        ...item,
+        ownerKey,
+        heldMessage: held,
+        submitDraft: false,
+        prefixText,
+      });
+      try {
+        await enqueueMessage();
+      } catch (error) {
+        await this.persist(item);
+        throw error;
+      }
+      return true;
+    });
   }
 
   retry(id: string): Promise<void> {
@@ -202,7 +259,10 @@ export class VoiceOutbox {
     return this.enqueue(async () => {
       const item = this.items.get(id);
       if (!item || isInFlight(item) || item.phase === "recording") return;
-      if (item.prefixText) await this.dependencies.appendDraft(item.ownerKey, item.prefixText);
+      if (item.heldMessage) await this.settleHeldMessage(item, item.heldMessage);
+      else if (item.prefixText) {
+        await this.dependencies.appendDraft(item.ownerKey, item.prefixText);
+      }
       await this.dependencies
         .getClient()
         ?.acknowledge(id)
@@ -259,15 +319,44 @@ export class VoiceOutbox {
     }
 
     const transcript = job.transcript?.trim() ?? "";
+    const held = item.heldMessage;
     if (!transcript) {
+      if (held && item.prefixText) {
+        await this.releaseHeldMessage(held, item, item.prefixText);
+        await client.acknowledge(item.id);
+        await this.forget(item.id);
+        return;
+      }
       if (item.prefixText) await this.dependencies.appendDraft(item.ownerKey, item.prefixText);
       await this.persist({ ...item, prefixText: "", phase: "no-speech", remoteStatus: job.status });
       return;
     }
-    if (item.mode === "draft") await this.dependencies.appendDraft(item.ownerKey, transcript);
+    if (held) {
+      await this.releaseHeldMessage(held, item, withTranscript(item.prefixText, transcript));
+    } else if (item.mode === "draft") {
+      await this.dependencies.appendDraft(item.ownerKey, transcript);
+    }
     await client.acknowledge(item.id);
     await this.forget(item.id);
     if (item.submitDraft) this.dependencies.submitDraft(item.ownerKey);
+  }
+
+  private async releaseHeldMessage(
+    held: VoiceHeldMessage,
+    item: VoiceOutboxItem,
+    text: string,
+  ): Promise<void> {
+    if (!held.releasing) {
+      await this.persist({ ...item, heldMessage: { ...held, releasing: true } });
+    }
+    const released = await this.dependencies.heldMessages.release(held, text);
+    if (!released && !held.releasing) await this.dependencies.appendDraft(held.draftKey, text);
+  }
+
+  /** What was typed still goes out; a chat that would stay empty goes away. */
+  private async settleHeldMessage(item: VoiceOutboxItem, held: VoiceHeldMessage): Promise<void> {
+    if (item.prefixText) await this.releaseHeldMessage(held, item, item.prefixText);
+    else await this.dependencies.heldMessages.remove(held);
   }
 
   private async deliver(item: VoiceOutboxItem): Promise<void> {
