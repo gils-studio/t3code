@@ -42,25 +42,28 @@ NodeTest.test("reports the environment it belongs to", async () => {
   NodeAssert.deepEqual(await response.json(), { environmentId: "env-1" });
 });
 
-NodeTest.test("stores the audio before acknowledging and accepts a repeated upload once", async () => {
-  const first = await fetch(`${base}/v1/jobs/job-00002`, {
-    method: "PUT",
-    headers: auth,
-    body: body("audio-bytes"),
-  });
-  NodeAssert.equal(first.status, 201);
-  NodeAssert.equal(await NodeFSP.readFile(store.audioPath("job-00002"), "utf8"), "audio-bytes");
+NodeTest.test(
+  "stores the audio before acknowledging and accepts a repeated upload once",
+  async () => {
+    const first = await fetch(`${base}/v1/jobs/job-00002`, {
+      method: "PUT",
+      headers: auth,
+      body: body("audio-bytes"),
+    });
+    NodeAssert.equal(first.status, 201);
+    NodeAssert.equal(await NodeFSP.readFile(store.audioPath("job-00002"), "utf8"), "audio-bytes");
 
-  const before = created;
-  const repeated = await fetch(`${base}/v1/jobs/job-00002`, {
-    method: "PUT",
-    headers: auth,
-    body: body("other"),
-  });
-  NodeAssert.equal(repeated.status, 200);
-  NodeAssert.equal(created, before);
-  NodeAssert.equal(await NodeFSP.readFile(store.audioPath("job-00002"), "utf8"), "audio-bytes");
-});
+    const before = created;
+    const repeated = await fetch(`${base}/v1/jobs/job-00002`, {
+      method: "PUT",
+      headers: auth,
+      body: body("other"),
+    });
+    NodeAssert.equal(repeated.status, 200);
+    NodeAssert.equal(created, before);
+    NodeAssert.equal(await NodeFSP.readFile(store.audioPath("job-00002"), "utf8"), "audio-bytes");
+  },
+);
 
 NodeTest.test("rejects invalid metadata and path-like ids", async () => {
   const invalid = await fetch(`${base}/v1/jobs/job-00003`, {

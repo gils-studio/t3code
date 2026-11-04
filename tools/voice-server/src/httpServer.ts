@@ -116,7 +116,10 @@ async function receiveUpload(
 
 export function createHttpServer(options: HttpOptions): NodeHttp.Server {
   const { store } = options;
-  const handle = async (request: NodeHttp.IncomingMessage, response: NodeHttp.ServerResponse): Promise<void> => {
+  const handle = async (
+    request: NodeHttp.IncomingMessage,
+    response: NodeHttp.ServerResponse,
+  ): Promise<void> => {
     if (!isAuthorized(request.headers.authorization, options.tokenHashes())) {
       request.resume();
       sendJson(response, 401, { error: "unauthorized" });

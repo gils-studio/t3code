@@ -141,7 +141,9 @@ export class JobStore {
 
   private async readJob(id: string): Promise<Job | null> {
     try {
-      return JSON.parse(await NodeFSP.readFile(NodePath.join(this.root, id, "job.json"), "utf8")) as Job;
+      return JSON.parse(
+        await NodeFSP.readFile(NodePath.join(this.root, id, "job.json"), "utf8"),
+      ) as Job;
     } catch {
       // No job.json: an upload that never finished. The phone still holds the audio and retries.
       return null;

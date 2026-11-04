@@ -5,13 +5,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import { T3CliSender, WhisperTranscriber } from "./adapters.ts";
-import {
-  dataDirectory,
-  readConfig,
-  readTokenHashes,
-  writeConfig,
-  type Config,
-} from "./config.ts";
+import { dataDirectory, readConfig, readTokenHashes, writeConfig, type Config } from "./config.ts";
 import { createHttpServer } from "./httpServer.ts";
 import { JobStore } from "./jobStore.ts";
 import { Worker } from "./worker.ts";
@@ -66,7 +60,10 @@ async function keepTunnelOpen(config: Config, isStopped: () => boolean): Promise
 async function serve(): Promise<void> {
   const config = await readConfig();
   const environmentId = (
-    await NodeFSP.readFile(NodePath.join(NodeOS.homedir(), ".t3", "userdata", "environment-id"), "utf8")
+    await NodeFSP.readFile(
+      NodePath.join(NodeOS.homedir(), ".t3", "userdata", "environment-id"),
+      "utf8",
+    )
   ).trim();
   const store = new JobStore(NodePath.join(dataDirectory(), "jobs"));
   await store.load();

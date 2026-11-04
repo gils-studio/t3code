@@ -139,32 +139,35 @@ NodeTest.test("sending retries for as long as T3 is down", async () => {
   NodeAssert.equal(store.get("job-00005")?.status, "done");
 });
 
-NodeTest.test("a crash during transcription resumes, and a crash after sending does not duplicate", async () => {
-  const sent = ["hallo"];
-  const { root, store, add } = await harness({ transcribe: async () => "x" }, sender(sent));
-  await add("job-00006");
-  await add("job-00007");
-  await store.update("job-00006", { status: "transcribing" }, 5_000);
-  await store.update(
-    "job-00007",
-    { status: "sending", transcript: "hallo", sendStarted: true },
-    5_000,
-  );
+NodeTest.test(
+  "a crash during transcription resumes, and a crash after sending does not duplicate",
+  async () => {
+    const sent = ["hallo"];
+    const { root, store, add } = await harness({ transcribe: async () => "x" }, sender(sent));
+    await add("job-00006");
+    await add("job-00007");
+    await store.update("job-00006", { status: "transcribing" }, 5_000);
+    await store.update(
+      "job-00007",
+      { status: "sending", transcript: "hallo", sendStarted: true },
+      5_000,
+    );
 
-  const reloaded = new JobStore(root);
-  await reloaded.load();
-  const worker = new Worker({
-    store: reloaded,
-    transcriber: { transcribe: async () => "neu" },
-    sender: sender(sent),
-    now: () => 10_000,
-  });
-  await worker.recover();
-  while (await worker.runNext());
-  NodeAssert.equal(reloaded.get("job-00006")?.status, "done");
-  NodeAssert.equal(reloaded.get("job-00007")?.status, "done");
-  NodeAssert.deepEqual(sent, ["hallo", "neu"]);
-});
+    const reloaded = new JobStore(root);
+    await reloaded.load();
+    const worker = new Worker({
+      store: reloaded,
+      transcriber: { transcribe: async () => "neu" },
+      sender: sender(sent),
+      now: () => 10_000,
+    });
+    await worker.recover();
+    while (await worker.runNext());
+    NodeAssert.equal(reloaded.get("job-00006")?.status, "done");
+    NodeAssert.equal(reloaded.get("job-00007")?.status, "done");
+    NodeAssert.deepEqual(sent, ["hallo", "neu"]);
+  },
+);
 
 NodeTest.test("nothing is sent when no speech was found", async () => {
   for (const silence of ["  ", "* Musik *", " [BLANK_AUDIO] (Stille) "]) {
