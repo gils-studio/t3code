@@ -44,7 +44,7 @@ describe("voice messages of a thread", () => {
       [item({ prefixText: "typed", previewText: "gehoert" })],
       thread(false),
     );
-    expect(row).toMatchObject({ text: "typed\n\ngehoert", awaitingVoiceId: "voice-1" });
+    expect(row).toMatchObject({ text: "typed\n\ngehoert […]", awaitingVoiceId: "voice-1" });
   });
 
   it("moves transcribing messages from the chat to the queue while the agent works", () => {

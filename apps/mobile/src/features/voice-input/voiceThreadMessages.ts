@@ -9,8 +9,13 @@ export const VOICE_MESSAGE_LABEL = "Voice message";
 export const isSentVoiceItem = (item: VoiceOutboxItem) =>
   item.phase !== "recording" && (item.mode === "send" || item.heldMessage !== undefined);
 
+/** The live words always trail the recording, so the end must not read as if words got lost. */
+export const voicePreviewText = (previewText: string | undefined) =>
+  previewText ? `${previewText.trimEnd()} […]` : "";
+
 export const voiceItemText = (item: VoiceOutboxItem) =>
-  [item.prefixText, item.previewText].filter(Boolean).join("\n\n") || VOICE_MESSAGE_LABEL;
+  [item.prefixText, voicePreviewText(item.previewText)].filter(Boolean).join("\n\n") ||
+  VOICE_MESSAGE_LABEL;
 
 export function voiceItemLabel(item: VoiceOutboxItem): string {
   if (item.phase === "no-speech") return "No speech found in the recording";

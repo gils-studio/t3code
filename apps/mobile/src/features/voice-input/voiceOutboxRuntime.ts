@@ -22,7 +22,7 @@ import {
 import { removeThreadOutboxMessage } from "../../state/thread-outbox-removal";
 import { VoiceOutbox, type VoiceHeldMessage, type VoiceServerClient } from "./voiceOutbox";
 import { voiceOutboxFileStore } from "./voiceOutboxStore";
-import { VOICE_MESSAGE_LABEL } from "./voiceThreadMessages";
+import { VOICE_MESSAGE_LABEL, voicePreviewText } from "./voiceThreadMessages";
 import {
   createVoiceServerClient,
   deleteVoiceServerConfig,
@@ -92,7 +92,7 @@ export const voiceOutbox = new VoiceOutbox({
     for (const listener of draftSubmitListeners) listener(ownerKey);
   },
   startThread: (ownerKey, id, previewText) => {
-    const start = { id, placeholder: previewText || VOICE_MESSAGE_LABEL };
+    const start = { id, placeholder: voicePreviewText(previewText) || VOICE_MESSAGE_LABEL };
     for (const listener of threadStartListeners) listener(ownerKey, start);
   },
   heldMessages: {
@@ -197,7 +197,9 @@ export async function enqueueWithPendingVoice(
 ): Promise<void> {
   const voiceId = voiceOutbox.pendingDraftItemId(draftKey);
   if (voiceId === null) return enqueueThreadOutboxMessage(message);
-  const text = [message.text, VOICE_MESSAGE_LABEL].filter(Boolean).join("\n\n");
+  const preview = voiceOutbox.getSnapshot().find((item) => item.id === voiceId)?.previewText;
+  const words = voicePreviewText(preview) || VOICE_MESSAGE_LABEL;
+  const text = [message.text, words].filter(Boolean).join("\n\n");
   const held = { ...message, text, awaitingVoiceId: voiceId };
   if (await holdVoiceThreadMessage(voiceId, draftKey, message.text, held)) return;
   // The transcript just landed in the draft, next to what the message was built from.
