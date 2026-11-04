@@ -24,6 +24,7 @@ function harness(options: { readonly saved?: ReadonlyArray<VoiceOutboxItem> } = 
     fetchJob: vi.fn<VoiceServerClient["fetchJob"]>(async (id) => jobs.get(id) ?? null),
     acknowledge: vi.fn<VoiceServerClient["acknowledge"]>(async () => {}),
     retry: vi.fn<VoiceServerClient["retry"]>(async () => {}),
+    claim: vi.fn<VoiceServerClient["claim"]>(async () => "claimed"),
   };
   const drafts = new Map<string, string>();
   const appendDraft = vi.fn(async (ownerKey: string, text: string) => {
@@ -34,6 +35,7 @@ function harness(options: { readonly saved?: ReadonlyArray<VoiceOutboxItem> } = 
   const heldMessages = {
     release: vi.fn<VoiceOutboxDependencies["heldMessages"]["release"]>(async () => true),
     remove: vi.fn<VoiceOutboxDependencies["heldMessages"]["remove"]>(async () => {}),
+    setSteering: vi.fn<VoiceOutboxDependencies["heldMessages"]["setSteering"]>(async () => true),
   };
   const startThread = vi.fn<VoiceOutboxDependencies["startThread"]>();
   const submitDraft = vi.fn<(ownerKey: string) => void>();
@@ -305,6 +307,76 @@ describe("VoiceOutbox", () => {
         h.outbox.holdThreadMessage("voice-1", held, "thread-key", "", failing),
       ).rejects.toThrow("disk full");
       expect(h.stored.get("voice-1")).toMatchObject({ ownerKey: "new-chat", submitDraft: true });
+    });
+  });
+
+  describe("steering a recording the service would send", () => {
+    const held = {
+      environmentId: "env",
+      threadId: "thread",
+      messageId: "message-1",
+      draftKey: "owner",
+      sendsAlone: false,
+    };
+    const start = async (claim?: Awaited<ReturnType<VoiceServerClient["claim"]>>) => {
+      const h = harness();
+      if (claim) h.client.claim.mockResolvedValue(claim);
+      await h.finish("send");
+      const enqueueMessage = vi.fn(async () => {});
+      const steer = (steers: boolean) =>
+        h.outbox.setSteering("voice-1", steers, () => ({ held, enqueueMessage }));
+      return { ...h, enqueueMessage, steer, saved: () => h.stored.get("voice-1") };
+    };
+
+    it("takes the job from the service and delivers the transcript itself", async () => {
+      const h = await start();
+      await h.steer(true);
+      expect(h.enqueueMessage).toHaveBeenCalledOnce();
+      expect(h.saved()).toMatchObject({ mode: "draft", heldMessage: { steers: true } });
+      h.jobs.set("voice-1", h.done("Wort"));
+      await h.outbox.poll();
+      expect(h.heldMessages.release).toHaveBeenCalledWith(
+        expect.objectContaining({ messageId: "message-1" }),
+        "typed\n\nWort",
+      );
+    });
+
+    it("drops its message when the service had already started sending", async () => {
+      const h = await start("too-late");
+      await h.steer(true);
+      expect(h.heldMessages.remove).toHaveBeenCalledOnce();
+      expect(h.saved()).toMatchObject({ mode: "send" });
+      expect(h.saved()?.heldMessage).toBeUndefined();
+    });
+
+    it("claims on the next poll when the service could not be asked yet", async () => {
+      const h = await start("missing");
+      await h.steer(true);
+      expect(h.saved()).toMatchObject({ mode: "send" });
+      h.client.claim.mockResolvedValue("claimed");
+      await h.outbox.poll();
+      expect(h.saved()).toMatchObject({ mode: "draft" });
+    });
+
+    it("undo keeps the message on the phone and only stops it from steering", async () => {
+      const h = await start();
+      await h.steer(true);
+      await h.steer(false);
+      expect(h.heldMessages.setSteering).toHaveBeenCalledWith(
+        expect.objectContaining({ messageId: "message-1" }),
+        false,
+      );
+      expect(h.heldMessages.remove).not.toHaveBeenCalled();
+      expect(h.saved()).toMatchObject({ mode: "draft", heldMessage: { steers: false } });
+      expect(h.client.claim).toHaveBeenCalledOnce();
+    });
+
+    it("leaves the service in charge when the message could not be stored", async () => {
+      const h = await start();
+      h.enqueueMessage.mockRejectedValue(new Error("disk full"));
+      await expect(h.steer(true)).rejects.toThrow("disk full");
+      expect(h.client.claim).not.toHaveBeenCalled();
+      expect(h.saved()?.heldMessage).toBeUndefined();
     });
   });
 

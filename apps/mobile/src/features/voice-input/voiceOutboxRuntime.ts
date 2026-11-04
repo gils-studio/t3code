@@ -3,6 +3,9 @@ import * as Linking from "expo-linking";
 import { useEffect, useEffectEvent, useSyncExternalStore } from "react";
 import { Alert, AppState } from "react-native";
 
+import { CommandId, MessageId, type EnvironmentId, type ThreadId } from "@t3tools/contracts";
+
+import { makeQueuedMessageMetadata } from "../../lib/commandMetadata";
 import { uuidv4 } from "../../lib/uuid";
 import { voiceUploadSupported } from "../../native/voiceUpload";
 import {
@@ -20,9 +23,14 @@ import {
   type QueuedThreadMessage,
 } from "../../state/thread-outbox";
 import { removeThreadOutboxMessage } from "../../state/thread-outbox-removal";
-import { VoiceOutbox, type VoiceHeldMessage, type VoiceServerClient } from "./voiceOutbox";
+import {
+  VoiceOutbox,
+  type VoiceHeldMessage,
+  type VoiceOutboxItem,
+  type VoiceServerClient,
+} from "./voiceOutbox";
 import { voiceOutboxFileStore } from "./voiceOutboxStore";
-import { VOICE_MESSAGE_LABEL, voicePreviewText } from "./voiceThreadMessages";
+import { VOICE_MESSAGE_LABEL, voiceItemText, voicePreviewText } from "./voiceThreadMessages";
 import {
   createVoiceServerClient,
   deleteVoiceServerConfig,
@@ -79,6 +87,9 @@ async function findHeldMessage(held: VoiceHeldMessage) {
     .find((message) => message.messageId === held.messageId);
 }
 
+/** "auto" as in the composer: an agent that finished meanwhile gets a new turn, not an error. */
+const steerDispatchMode = (steers: boolean) => (steers ? "auto" : "queue");
+
 const voiceLivePreview = new VoiceLivePreview({
   getClient: () => client,
   readAudio: readRecordedBytes,
@@ -105,6 +116,11 @@ export const voiceOutbox = new VoiceOutbox({
     remove: async (held) => {
       const message = await findHeldMessage(held);
       if (message) await removeThreadOutboxMessage(message);
+    },
+    setSteering: async (held, steers) => {
+      const message = await findHeldMessage(held);
+      if (!message) return false;
+      return updateThreadOutboxMessage({ ...message, dispatchMode: steerDispatchMode(steers) });
     },
   },
   live: voiceLivePreview,
@@ -177,6 +193,7 @@ export function holdVoiceThreadMessage(
     messageId: String(message.messageId),
     draftKey,
     sendsAlone: typedText.length > 0 || message.attachments.length > 0,
+    steers: message.dispatchMode === "auto",
   };
   return voiceOutbox.holdThreadMessage(
     voiceId,
@@ -185,6 +202,37 @@ export function holdVoiceThreadMessage(
     typedText,
     () => enqueueThreadOutboxMessage(message),
   );
+}
+
+/** Switches a sent recording between steering the agent and queueing behind it. */
+export function setVoiceSteering(
+  item: VoiceOutboxItem,
+  steers: boolean,
+  target: { readonly environmentId: EnvironmentId; readonly threadId: ThreadId },
+): Promise<void> {
+  return voiceOutbox.setSteering(item.id, steers, () => {
+    const metadata = makeQueuedMessageMetadata();
+    const message: QueuedThreadMessage = {
+      ...target,
+      messageId: MessageId.make(metadata.messageId),
+      commandId: CommandId.make(metadata.commandId),
+      text: voiceItemText(item),
+      attachments: [],
+      dispatchMode: steerDispatchMode(steers),
+      awaitingVoiceId: item.id,
+      createdAt: new Date(item.createdAt).toISOString(),
+    };
+    return {
+      held: {
+        environmentId: String(target.environmentId),
+        threadId: String(target.threadId),
+        messageId: String(message.messageId),
+        draftKey: item.ownerKey,
+        sendsAlone: item.prefixText.length > 0,
+      },
+      enqueueMessage: () => enqueueThreadOutboxMessage(message),
+    };
+  });
 }
 
 export const hasPendingVoice = (draftKey: string) =>

@@ -29,6 +29,14 @@ export type VoiceHeldMessage = {
   readonly sendsAlone: boolean;
   /** Once set, a missing message most likely went out already. */
   readonly releasing?: boolean;
+  /** Goes to the running agent the moment the words are in, instead of queueing behind it. */
+  readonly steers?: boolean;
+};
+
+/** A recording the service would send, turned into a message the phone delivers. */
+export type VoiceSteerHandover = {
+  readonly held: VoiceHeldMessage;
+  readonly enqueueMessage: () => Promise<void>;
 };
 
 export type VoiceOutboxItem = {
@@ -67,6 +75,8 @@ export type VoiceServerClient = {
   fetchJob(id: string): Promise<VoiceJob | null>;
   acknowledge(id: string): Promise<void>;
   retry(id: string): Promise<void>;
+  /** Takes sending away from the service; "too-late" once it started, "missing" before the upload. */
+  claim(id: string): Promise<"claimed" | "too-late" | "missing">;
 };
 
 export type VoiceOutboxDependencies = {
@@ -82,6 +92,8 @@ export type VoiceOutboxDependencies = {
     /** False when the message no longer exists. */
     release(held: VoiceHeldMessage, text: string): Promise<boolean>;
     remove(held: VoiceHeldMessage): Promise<void>;
+    /** False when the message no longer exists. */
+    setSteering(held: VoiceHeldMessage, steers: boolean): Promise<boolean>;
   };
   /** Shows the words while they are spoken; the recording never depends on it. */
   readonly live: {
@@ -272,6 +284,38 @@ export class VoiceOutbox {
     });
   }
 
+  /**
+   * Only the phone can steer, the service can only queue. So the message moves
+   * into the thread outbox before the service gives the job up: a crash in
+   * between leaves one held message that a later poll claims or removes, never two sends.
+   */
+  setSteering(id: string, steers: boolean, handover: () => VoiceSteerHandover): Promise<void> {
+    return this.enqueue(async () => {
+      const item = this.items.get(id);
+      if (!item || !isInFlight(item)) return;
+      const held = item.heldMessage;
+      if (held) {
+        if (await this.dependencies.heldMessages.setSteering(held, steers)) {
+          await this.persist({ ...item, heldMessage: { ...held, steers } });
+        }
+        return;
+      }
+      if (!steers || item.mode !== "send") return;
+      const next = handover();
+      const holding = { ...item, heldMessage: { ...next.held, steers } };
+      await this.persist(holding);
+      try {
+        await next.enqueueMessage();
+      } catch (error) {
+        await this.persist(item);
+        throw error;
+      }
+      const client = this.dependencies.getClient();
+      // Offline or not uploaded yet: the next poll claims it.
+      if (client) await this.claimFromService(client, holding).catch(() => {});
+    });
+  }
+
   retry(id: string): Promise<void> {
     return this.enqueue(async () => {
       const item = this.items.get(id);
@@ -316,7 +360,30 @@ export class VoiceOutbox {
     });
   }
 
-  private async pollItem(client: VoiceServerClient, item: VoiceOutboxItem): Promise<void> {
+  private async claimFromService(
+    client: VoiceServerClient,
+    item: VoiceOutboxItem,
+  ): Promise<VoiceOutboxItem> {
+    const answer = await client.claim(item.id);
+    if (answer === "missing") return item;
+    if (answer === "claimed") {
+      const claimed: VoiceOutboxItem = { ...item, mode: "draft" };
+      await this.persist(claimed);
+      // Rewrites the upload metadata: uploading this again must not make the service send.
+      await this.dependencies.store.adoptAudio(claimed);
+      return claimed;
+    }
+    const { heldMessage, ...unheld } = item;
+    if (heldMessage) await this.dependencies.heldMessages.remove(heldMessage);
+    await this.persist(unheld);
+    return unheld;
+  }
+
+  private async pollItem(client: VoiceServerClient, stored: VoiceOutboxItem): Promise<void> {
+    const item =
+      stored.mode === "send" && stored.heldMessage
+        ? await this.claimFromService(client, stored)
+        : stored;
     const job = await client.fetchJob(item.id);
     if (!job) {
       client.enqueueUpload(item);

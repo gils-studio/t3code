@@ -113,6 +113,17 @@ NodeTest.test("reports status and accepts the phone's acknowledgement", async ()
   NodeAssert.notEqual(store.get("job-00002")?.acknowledgedAt, null);
 });
 
+NodeTest.test("lets the phone take over sending until the service started on it", async () => {
+  const claim = (id: string) =>
+    fetch(`${base}/v1/jobs/${id}/claim`, { method: "POST", headers: auth });
+  NodeAssert.equal((await claim("job-unknown")).status, 404);
+  NodeAssert.equal((await claim("job-00002")).status, 200);
+  NodeAssert.equal(store.get("job-00002")?.mode, "draft");
+  await store.update("job-00002", { mode: "send", status: "sending" }, 1);
+  NodeAssert.equal((await claim("job-00002")).status, 409);
+  NodeAssert.equal(store.get("job-00002")?.mode, "send");
+});
+
 NodeTest.test("streams live audio and tells a phone that lost track where to resume", async () => {
   const live = (id: string, offset: number, audio: string, headers: object = auth) =>
     fetch(`${base}/v1/live/${id}?offset=${offset}&language=de`, {
