@@ -1,6 +1,6 @@
 import { File, FileMode } from "expo-file-system";
 import * as Linking from "expo-linking";
-import { useSyncExternalStore } from "react";
+import { useEffect, useEffectEvent, useSyncExternalStore } from "react";
 import { Alert, AppState } from "react-native";
 
 import { uuidv4 } from "../../lib/uuid";
@@ -28,6 +28,7 @@ let server: VoiceServerConfig | null = null;
 let client: (VoiceServerClient & VoiceLiveClient) | null = null;
 let started = false;
 const serverListeners = new Set<() => void>();
+const draftSubmitListeners = new Set<(ownerKey: string) => void>();
 
 function deviceLanguage(): string {
   const language = Intl.DateTimeFormat().resolvedOptions().locale.split("-")[0] ?? "";
@@ -64,6 +65,9 @@ export const voiceOutbox = new VoiceOutbox({
   store: voiceOutboxFileStore,
   getClient: () => client,
   appendDraft: appendDraftText,
+  submitDraft: (ownerKey) => {
+    for (const listener of draftSubmitListeners) listener(ownerKey);
+  },
   live: voiceLivePreview,
   newId: () => `voice-${uuidv4()}`,
   language: deviceLanguage,
@@ -91,6 +95,19 @@ export const useVoiceOutboxItems = () =>
 
 export const useVoiceLiveText = () =>
   useSyncExternalStore(voiceLivePreview.subscribe, voiceLivePreview.getText);
+
+/** Calls back when a voice message of this composer has landed in its draft and should go out. */
+export function useVoiceDraftSubmit(ownerKey: string, onSubmit: () => void): void {
+  const submit = useEffectEvent(onSubmit);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to the outbox, which lives outside React
+  useEffect(() => {
+    const listener = (key: string) => {
+      if (key === ownerKey) submit();
+    };
+    draftSubmitListeners.add(listener);
+    return () => void draftSubmitListeners.delete(listener);
+  }, [ownerKey]);
+}
 
 export async function pairVoiceServer(link: string): Promise<void> {
   const pairing = parseVoicePairLink(link);
