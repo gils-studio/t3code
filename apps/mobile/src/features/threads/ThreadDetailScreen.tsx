@@ -200,7 +200,7 @@ import { ThreadFeed, type ThreadFeedHandle, type ThreadFeedHistoryControls } fro
 import { WorkspaceMutationIdProvider } from "./WorkspaceMutationIdProvider";
 import { useThreadTurnSubagents } from "./ThreadAgentsSheet";
 import { ComposerQueuedEditBanner } from "./ComposerQueuedEdit";
-import { useThreadQueuedCount } from "./ThreadQueueControl";
+import { useThreadQueuedCount, useThreadVoiceQueue } from "./ThreadQueueControl";
 import { ThreadGuestShareBar } from "./ThreadGuestShareBar";
 import { ThreadSideChatsRow } from "./ThreadSideChatsRow";
 import type { ThreadContentPresentation } from "./threadContentPresentation";
@@ -479,7 +479,8 @@ function ThreadDetailBody(
     threadId: props.selectedThread.id,
   });
   const composerError = useAtomValue(threadComposerErrorsAtom)[selectedThreadKey]?.message ?? null;
-  const queuedCount = useThreadQueuedCount(props.selectedThreadDetailRef);
+  const voiceQueue = useThreadVoiceQueue(props.selectedThreadDetailRef);
+  const queuedCount = useThreadQueuedCount(props.selectedThreadDetailRef) + voiceQueue.length;
   const turnSubagents = useThreadTurnSubagents(props.selectedThreadDetailRef);
   const agentsSegment = resolveSubagentPillSegment(turnSubagents);
   const defaultComposerEditorRef = useRef<ComposerEditorHandle>(null);
@@ -1584,6 +1585,7 @@ function ThreadDetailBody(
                       });
                     }}
                     queuedCount={queuedCount}
+                    queueTranscribing={voiceQueue.length > 0}
                     onOpenQueue={() => {
                       Keyboard.dismiss();
                       navigation.navigate("ThreadQueue", {

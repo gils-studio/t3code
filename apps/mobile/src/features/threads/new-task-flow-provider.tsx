@@ -65,6 +65,7 @@ import {
 import { useBranches, usePaginatedBranches } from "../../state/queries";
 import { vcsEnvironment } from "../../state/vcs";
 import { type QueuedThreadMessage } from "../../state/thread-outbox";
+import type { VoiceThreadStart } from "../voice-input/voiceOutboxRuntime";
 import {
   setPendingConnectionError,
   useRemoteConnectionStatus,
@@ -719,13 +720,19 @@ export function NewTaskFlowProvider(
 
   const buildPendingTaskMessage = (
     metadata: TurnCommandMetadata,
-    options?: { readonly currentCheckoutBranch?: string | null },
+    options?: {
+      readonly currentCheckoutBranch?: string | null;
+      readonly voice?: VoiceThreadStart;
+    },
   ): QueuedThreadMessage | null => {
     if (!selectedProject || !selectedProjectDraftKey) {
       return null;
     }
     const draft = getComposerDraftSnapshot(selectedProjectDraftKey);
-    const text = draft.text.trim();
+    const typedText = draft.text.trim();
+    const text = options?.voice
+      ? [typedText, options.voice.placeholder].filter(Boolean).join("\n\n")
+      : typedText;
     const draftModelSelection =
       resolveSelectableModelSelection(
         selectedEnvironmentServerConfig,
@@ -787,6 +794,7 @@ export function NewTaskFlowProvider(
           ? { startFromOrigin: true }
           : {}),
       },
+      ...(options?.voice ? { awaitingVoiceId: options.voice.id } : {}),
       createdAt: metadata.createdAt,
     };
   };

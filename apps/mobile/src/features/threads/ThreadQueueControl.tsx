@@ -37,6 +37,9 @@ import { beginQueuedRunEdit, useQueuedRunEdit } from "../../state/queued-run-edi
 import { environmentThreadDetails, threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
+import { VoiceItemStatus } from "../voice-input/VoiceMessageStatus";
+import { useVoiceOutboxItems } from "../voice-input/voiceOutboxRuntime";
+import { voiceItemText, voiceQueueItems } from "../voice-input/voiceThreadMessages";
 import {
   REMOVE_QUEUED_MESSAGE_ACCESSIBILITY_LABEL,
   buildCancelQueuedRunCommand,
@@ -50,6 +53,10 @@ const EMPTY_QUEUED_COUNT_ATOM = Atom.make(0).pipe(
   Atom.withLabel("mobile-thread-queue-count:empty"),
 );
 
+const EMPTY_QUEUE_WORKFLOW_ATOM = Atom.make(null).pipe(
+  Atom.withLabel("mobile-thread-queue-workflow:empty"),
+);
+
 type QueueTarget = { readonly environmentId: EnvironmentId; readonly threadId: ThreadId };
 type QueueAction = "steer" | "edit" | "remove";
 
@@ -60,6 +67,22 @@ function useThreadQueueWorkflow(target: QueueTarget) {
 export function useThreadQueuedCount(target: QueueTarget | null) {
   return useAtomValue(
     target === null ? EMPTY_QUEUED_COUNT_ATOM : environmentThreadDetails.queuedCountAtom(target),
+  );
+}
+
+/** Sent recordings that are still words away from joining the queue behind the agent. */
+export function useThreadVoiceQueue(target: QueueTarget | null) {
+  const workflow = useAtomValue(
+    target === null
+      ? EMPTY_QUEUE_WORKFLOW_ATOM
+      : environmentThreadDetails.queueWorkflowAtom(target),
+  );
+  const items = useVoiceOutboxItems();
+  if (target === null) return [];
+  return voiceQueueItems(
+    items,
+    scopedThreadKey(target.environmentId, target.threadId),
+    (workflow?.activeRun ?? null) !== null,
   );
 }
 
@@ -139,16 +162,18 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
   const [busyRunId, setBusyRunId] = useState<RunId | null>(null);
   const busyRef = useRef(false);
   const queuedRuns = workflow?.queuedRuns ?? [];
+  const voiceQueue = useThreadVoiceQueue(target);
+  const queueLength = queuedRuns.length + voiceQueue.length;
 
-  const hadQueuedRuns = useRef(queuedRuns.length > 0);
+  const hadQueuedRuns = useRef(queueLength > 0);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pops the navigator once the server-side queue empties after it had runs
   useEffect(() => {
-    if (queuedRuns.length > 0) {
+    if (queueLength > 0) {
       hadQueuedRuns.current = true;
       return;
     }
     if (hadQueuedRuns.current) navigation.goBack();
-  }, [navigation, queuedRuns.length]);
+  }, [navigation, queueLength]);
 
   const act = async (runId: RunId, action: QueueAction) => {
     if (busyRef.current) return;
@@ -230,7 +255,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
       {editBlockedReason !== null && queuedRuns.length > 0 ? (
         <Text className="py-3 text-sm text-foreground-muted">{editBlockedReason}</Text>
       ) : null}
-      {queuedRuns.length === 0 ? (
+      {queueLength === 0 ? (
         <Text className="pt-6 text-center text-sm text-foreground-muted">
           No messages waiting in this queue.
         </Text>
@@ -355,6 +380,14 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
           </View>
         );
       })}
+      {voiceQueue.map((item) => (
+        <View key={item.id} className="min-h-14 justify-center gap-1 border-b border-border py-2.5">
+          <Text className="text-sm text-foreground-muted" numberOfLines={1}>
+            {voiceItemText(item)}
+          </Text>
+          <VoiceItemStatus compact item={item} />
+        </View>
+      ))}
     </ScrollView>
   );
 

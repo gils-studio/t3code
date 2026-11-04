@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import {
   VoiceOutbox,
   type VoiceJob,
+  type VoiceOutboxDependencies,
   type VoiceOutboxItem,
   type VoiceOutboxStore,
   type VoiceServerClient,
@@ -29,13 +30,20 @@ function harness(options: { readonly saved?: ReadonlyArray<VoiceOutboxItem> } = 
     drafts.set(ownerKey, `${drafts.get(ownerKey) ?? ""}${text}`);
   });
   let sequence = 0;
-  const live = { start: vi.fn(), stop: vi.fn() };
+  const live = { start: vi.fn(), stop: vi.fn(), getText: () => "gehoert" };
+  const heldMessages = {
+    release: vi.fn<VoiceOutboxDependencies["heldMessages"]["release"]>(async () => true),
+    remove: vi.fn<VoiceOutboxDependencies["heldMessages"]["remove"]>(async () => {}),
+  };
+  const startThread = vi.fn<VoiceOutboxDependencies["startThread"]>();
   const submitDraft = vi.fn<(ownerKey: string) => void>();
   const outbox = new VoiceOutbox({
     store,
     getClient: () => client,
     appendDraft,
     submitDraft,
+    startThread,
+    heldMessages,
     live,
     newId: () => `voice-${(sequence += 1)}`,
     language: () => "de",
@@ -45,6 +53,7 @@ function harness(options: { readonly saved?: ReadonlyArray<VoiceOutboxItem> } = 
   const handoff = outbox.createHandoff({
     ownerKey: "owner",
     threadId: "thread",
+    sendsThroughDraft: () => false,
     readDraftText: () => draftText,
     clearDraftText: () => {
       draftText = "";
@@ -69,6 +78,8 @@ function harness(options: { readonly saved?: ReadonlyArray<VoiceOutboxItem> } = 
     drafts,
     appendDraft,
     submitDraft,
+    startThread,
+    heldMessages,
     handoff,
     finish,
     done,
@@ -126,6 +137,7 @@ describe("VoiceOutbox", () => {
     const handoff = h.outbox.createHandoff({
       ownerKey: "new-chat",
       threadId: null,
+      sendsThroughDraft: () => false,
       readDraftText: () => "typed",
       clearDraftText: () => {
         throw new Error("the draft stays until the composer sends it");
@@ -142,6 +154,206 @@ describe("VoiceOutbox", () => {
     await h.outbox.poll();
     expect(h.drafts.get("new-chat")).toBe("hallo");
     expect(h.submitDraft).toHaveBeenCalledWith("new-chat");
+  });
+
+  describe("a recording sent from a new chat", () => {
+    const held = {
+      environmentId: "env",
+      threadId: "new-thread",
+      messageId: "message",
+      draftKey: "new-chat",
+      sendsAlone: false,
+    };
+    const sendFromNewChat = async () => {
+      const h = harness();
+      const handoff = h.outbox.createHandoff({
+        ownerKey: "new-chat",
+        threadId: null,
+        sendsThroughDraft: () => false,
+        readDraftText: () => "",
+        clearDraftText: () => {},
+      });
+      handoff.recordingStarted("file:///cache/a.aac");
+      handoff.recordingFinished("file:///cache/a.aac", "send");
+      await h.outbox.poll();
+      return h;
+    };
+    const holdIt = async (prefixText = "") => {
+      const h = await sendFromNewChat();
+      const enqueue = vi.fn(async () => {});
+      const hold = () =>
+        h.outbox.holdThreadMessage("voice-1", held, "thread-key", prefixText, enqueue);
+      expect(await hold()).toBe(true);
+      return { ...h, enqueue };
+    };
+
+    it("keeps fetching a held transcript after the app was put away, but nothing else", async () => {
+      vi.useFakeTimers();
+      try {
+        const h = await holdIt();
+        h.outbox.setForeground(false);
+        h.client.fetchJob.mockClear();
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(h.client.fetchJob).toHaveBeenCalledWith("voice-1");
+
+        const other = await sendFromNewChat();
+        other.outbox.setForeground(true);
+        other.outbox.setForeground(false);
+        other.client.fetchJob.mockClear();
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(other.client.fetchJob).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("asks the screen to open the chat, with the words heard so far", async () => {
+      const h = await sendFromNewChat();
+      expect(h.startThread).toHaveBeenCalledWith("new-chat", "voice-1", "gehoert");
+    });
+
+    it("releases the message with the transcript instead of touching a draft", async () => {
+      const h = await holdIt("typed");
+      expect(h.stored.get("voice-1")).toMatchObject({ ownerKey: "thread-key", heldMessage: held });
+      h.jobs.set("voice-1", h.done("hallo"));
+      await h.outbox.poll();
+      expect(h.heldMessages.release).toHaveBeenCalledWith(held, "typed\n\nhallo");
+      expect(h.appendDraft).not.toHaveBeenCalled();
+      expect(h.submitDraft).not.toHaveBeenCalled();
+      expect(h.stored.size).toBe(0);
+    });
+
+    it("keeps the recording until the release is stored", async () => {
+      const h = await holdIt();
+      h.heldMessages.release.mockRejectedValueOnce(new Error("disk full"));
+      h.jobs.set("voice-1", h.done("hallo"));
+      await h.outbox.poll();
+      expect(h.client.acknowledge).not.toHaveBeenCalled();
+      expect(h.stored.has("voice-1")).toBe(true);
+    });
+
+    it("puts the text into the draft when the chat was deleted meanwhile", async () => {
+      const h = await holdIt();
+      h.heldMessages.release.mockResolvedValueOnce(false);
+      h.jobs.set("voice-1", h.done("hallo"));
+      await h.outbox.poll();
+      expect(h.drafts.get("new-chat")).toBe("hallo");
+    });
+
+    it("does not repeat the text when a crash follows the release", async () => {
+      const h = await holdIt();
+      h.heldMessages.release.mockImplementationOnce(async () => {
+        throw new Error("killed");
+      });
+      h.jobs.set("voice-1", h.done("hallo"));
+      await h.outbox.poll();
+      h.heldMessages.release.mockResolvedValueOnce(false);
+      await h.outbox.poll();
+      expect(h.appendDraft).not.toHaveBeenCalled();
+      expect(h.stored.size).toBe(0);
+    });
+
+    it("sends the typed text or image when the recording held no speech", async () => {
+      const h = await sendFromNewChat();
+      const alone = { ...held, sendsAlone: true };
+      await h.outbox.holdThreadMessage("voice-1", alone, "thread-key", "", async () => {});
+      h.jobs.set("voice-1", h.done(""));
+      await h.outbox.poll();
+      expect(h.heldMessages.release).toHaveBeenCalledWith(alone, "");
+      expect(h.heldMessages.remove).not.toHaveBeenCalled();
+      expect(h.stored.size).toBe(0);
+    });
+
+    it("shows silence in the chat, and dismissing it removes the empty chat", async () => {
+      const h = await holdIt();
+      h.jobs.set("voice-1", h.done(""));
+      await h.outbox.poll();
+      expect(h.stored.get("voice-1")?.phase).toBe("no-speech");
+      await h.outbox.dismiss("voice-1");
+      expect(h.heldMessages.remove).toHaveBeenCalledWith(held);
+      expect(h.stored.size).toBe(0);
+    });
+
+    it("never removes an image with the failed recording it waited for", async () => {
+      const h = await sendFromNewChat();
+      const alone = { ...held, sendsAlone: true };
+      await h.outbox.holdThreadMessage("voice-1", alone, "thread-key", "", async () => {});
+      h.jobs.set("voice-1", { ...h.done(""), status: "failed", lastError: "broken" });
+      await h.outbox.poll();
+      await h.outbox.dismiss("voice-1");
+      expect(h.heldMessages.remove).not.toHaveBeenCalled();
+      expect(h.heldMessages.release).toHaveBeenCalledWith(alone, "");
+    });
+
+    it("refuses a recording that already went through the draft", async () => {
+      const h = await sendFromNewChat();
+      h.jobs.set("voice-1", h.done("hallo"));
+      await h.outbox.poll();
+      const enqueue = vi.fn(async () => {});
+      expect(await h.outbox.holdThreadMessage("voice-1", held, "thread-key", "", enqueue)).toBe(
+        false,
+      );
+      expect(enqueue).not.toHaveBeenCalled();
+    });
+
+    it("stays on the draft path when the message could not be stored", async () => {
+      const h = await sendFromNewChat();
+      const failing = async () => {
+        throw new Error("disk full");
+      };
+      await expect(
+        h.outbox.holdThreadMessage("voice-1", held, "thread-key", "", failing),
+      ).rejects.toThrow("disk full");
+      expect(h.stored.get("voice-1")).toMatchObject({ ownerKey: "new-chat", submitDraft: true });
+    });
+  });
+
+  describe("a message sent while its dictation is transcribing", () => {
+    const held = {
+      environmentId: "env",
+      threadId: "thread",
+      messageId: "message",
+      draftKey: "owner",
+      sendsAlone: true,
+    };
+
+    it("finds the recording and waits for its words", async () => {
+      const h = harness();
+      await h.finish("draft");
+      expect(h.outbox.pendingDraftItemId("owner")).toBe("voice-1");
+      await h.outbox.holdThreadMessage("voice-1", held, "owner", "typed", async () => {});
+      expect(h.outbox.pendingDraftItemId("owner")).toBe(null);
+      h.jobs.set("voice-1", h.done("hallo"));
+      await h.outbox.poll();
+      expect(h.heldMessages.release).toHaveBeenCalledWith(held, "typed\n\nhallo");
+      expect(h.appendDraft).not.toHaveBeenCalled();
+    });
+
+    it("has nothing to wait for once the words arrived", async () => {
+      const h = harness();
+      await h.finish("draft");
+      h.jobs.set("voice-1", h.done("hallo"));
+      await h.outbox.poll();
+      expect(h.outbox.pendingDraftItemId("owner")).toBe(null);
+    });
+
+    it("sends a recording with attachments through the draft, not the service", async () => {
+      const h = harness();
+      const handoff = h.outbox.createHandoff({
+        ownerKey: "owner",
+        threadId: "thread",
+        sendsThroughDraft: () => true,
+        readDraftText: () => "typed",
+        clearDraftText: () => {
+          throw new Error("the composer sends the draft");
+        },
+      });
+      handoff.recordingStarted("file:///cache/a.aac");
+      handoff.recordingFinished("file:///cache/a.aac", "send");
+      await h.outbox.poll();
+      expect(h.stored.get("voice-1")).toMatchObject({ mode: "draft", submitDraft: true });
+      expect(h.startThread).toHaveBeenCalledWith("owner", "voice-1", "gehoert");
+    });
   });
 
   it("keeps the item when the draft could not take the text", async () => {
@@ -222,6 +434,7 @@ describe("VoiceOutbox", () => {
     const handoff = h.outbox.createHandoff({
       ownerKey: "new-task",
       threadId: null,
+      sendsThroughDraft: () => false,
       readDraftText: () => "typed",
       clearDraftText: () => {
         throw new Error("the draft must stay");

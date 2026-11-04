@@ -5,6 +5,8 @@ import type {
 
 export const VOICE_SERVER_RECORDING_LIMIT_SECONDS = 30 * 60;
 const POLL_INTERVAL_MS = 1_000;
+/** Long enough for a held message to leave after the app was put away, short enough for offline. */
+const BACKGROUND_POLL_LIMIT_MS = 2 * 60_000;
 
 export type VoiceJob = {
   readonly status: "queued" | "transcribing" | "sending" | "done" | "failed";
@@ -15,6 +17,19 @@ export type VoiceJob = {
 
 export type VoiceOutboxPhase = "recording" | "uploading" | "processing" | "no-speech" | "failed";
 
+/** A message waiting in the thread outbox for this transcript. */
+export type VoiceHeldMessage = {
+  readonly environmentId: string;
+  readonly threadId: string;
+  readonly messageId: string;
+  /** Where the text goes if the message is gone, say because the chat was deleted. */
+  readonly draftKey: string;
+  /** Typed text or attachments, which go out even if the recording yields no words. */
+  readonly sendsAlone: boolean;
+  /** Once set, a missing message most likely went out already. */
+  readonly releasing?: boolean;
+};
+
 export type VoiceOutboxItem = {
   readonly id: string;
   readonly ownerKey: string;
@@ -22,7 +37,10 @@ export type VoiceOutboxItem = {
   readonly mode: VoiceRecordingDisposition;
   /** Without a thread the service cannot send, so an open composer sends the finished draft. */
   readonly submitDraft: boolean;
+  readonly heldMessage?: VoiceHeldMessage;
   readonly prefixText: string;
+  /** The live words at the end of the recording, shown until the transcript replaces them. */
+  readonly previewText?: string;
   readonly language: string;
   /** Set until the audio has moved into outbox storage. */
   readonly sourceUri: string | null;
@@ -57,10 +75,18 @@ export type VoiceOutboxDependencies = {
   readonly appendDraft: (ownerKey: string, text: string) => Promise<void>;
   /** Without a composer listening the text simply stays in the draft. */
   readonly submitDraft: (ownerKey: string) => void;
+  /** An open new-chat screen answers by moving to a thread, see holdThreadMessage. */
+  readonly startThread: (ownerKey: string, id: string, previewText: string) => void;
+  readonly heldMessages: {
+    /** False when the message no longer exists. */
+    release(held: VoiceHeldMessage, text: string): Promise<boolean>;
+    remove(held: VoiceHeldMessage): Promise<void>;
+  };
   /** Shows the words while they are spoken; the recording never depends on it. */
   readonly live: {
     start(id: string, uri: string, language: string): void;
     stop(): void;
+    getText(): string;
   };
   readonly newId: () => string;
   readonly language: () => string;
@@ -71,11 +97,16 @@ export type VoiceHandoffTarget = {
   readonly ownerKey: string;
   /** Null for a draft without a thread yet; such recordings can only return to the draft. */
   readonly threadId: string | null;
+  /** The service only sends text, so attachments have to leave through the composer. */
+  readonly sendsThroughDraft: () => boolean;
   readonly readDraftText: () => string;
   readonly clearDraftText: () => void;
 };
 
-const isInFlight = (item: VoiceOutboxItem) =>
+const withTranscript = (prefixText: string, transcript: string) =>
+  prefixText ? `${prefixText.trimEnd()}\n\n${transcript}` : transcript;
+
+export const isInFlight = (item: VoiceOutboxItem) =>
   item.phase === "uploading" || item.phase === "processing";
 
 /**
@@ -91,6 +122,7 @@ export class VoiceOutbox {
   private queue: Promise<unknown> = Promise.resolve();
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
   private foreground = false;
+  private backgroundedAt: number | null = null;
 
   constructor(dependencies: VoiceOutboxDependencies) {
     this.dependencies = dependencies;
@@ -127,7 +159,9 @@ export class VoiceOutbox {
 
   setForeground(foreground: boolean): void {
     this.foreground = foreground;
+    this.backgroundedAt = foreground ? null : this.dependencies.now();
     if (foreground) this.resumeUploads();
+    else if (this.shouldPoll()) this.schedulePoll();
     else this.cancelPoll();
   }
 
@@ -160,19 +194,28 @@ export class VoiceOutbox {
           this.dependencies.live.start(id!, uri, this.dependencies.language());
         }),
       recordingFinished: (uri, disposition) => {
-        const mode = target.threadId === null ? "draft" : disposition;
+        const mode = target.threadId === null || target.sendsThroughDraft() ? "draft" : disposition;
         const prefixText = mode === "send" ? target.readDraftText() : "";
         void this.enqueue(async () => {
+          const previewText = this.dependencies.live.getText();
           this.dependencies.live.stop();
           if (id === null) await begin(uri);
           const item = this.items.get(id!);
           if (!item) return;
           const submitDraft = disposition === "send" && mode === "draft";
-          const finished = { ...item, mode, submitDraft, prefixText, sourceUri: uri };
+          const finished = {
+            ...item,
+            mode,
+            submitDraft,
+            prefixText,
+            sourceUri: uri,
+            ...(previewText ? { previewText } : {}),
+          };
           // The typed text may only leave the draft once it is stored with the recording.
           await this.persist(finished);
           if (mode === "send") target.clearDraftText();
           await this.deliver(finished);
+          if (submitDraft) this.dependencies.startThread(target.ownerKey, id!, previewText);
         });
       },
       recordingDiscarded: () => {
@@ -182,6 +225,50 @@ export class VoiceOutbox {
         });
       },
     };
+  }
+
+  /** A recording of this draft whose words are still on their way. */
+  pendingDraftItemId(ownerKey: string): string | null {
+    const pending = this.snapshot.filter(
+      (item) =>
+        item.ownerKey === ownerKey &&
+        item.mode === "draft" &&
+        !item.heldMessage &&
+        isInFlight(item),
+    );
+    return pending.at(-1)?.id ?? null;
+  }
+
+  /**
+   * Ties a recording to a message, so nobody has to wait for the transcript
+   * and it cannot be left behind. The link is stored first: a crash in between leaves a
+   * recording without a message, which ends up in the draft, never the reverse.
+   */
+  holdThreadMessage(
+    id: string,
+    held: VoiceHeldMessage,
+    ownerKey: string,
+    prefixText: string,
+    enqueueMessage: () => Promise<void>,
+  ): Promise<boolean> {
+    return this.enqueue(async () => {
+      const item = this.items.get(id);
+      if (!item || item.mode !== "draft" || item.heldMessage || !isInFlight(item)) return false;
+      await this.persist({
+        ...item,
+        ownerKey,
+        heldMessage: held,
+        submitDraft: false,
+        prefixText,
+      });
+      try {
+        await enqueueMessage();
+      } catch (error) {
+        await this.persist(item);
+        throw error;
+      }
+      return true;
+    });
   }
 
   retry(id: string): Promise<void> {
@@ -202,7 +289,10 @@ export class VoiceOutbox {
     return this.enqueue(async () => {
       const item = this.items.get(id);
       if (!item || isInFlight(item) || item.phase === "recording") return;
-      if (item.prefixText) await this.dependencies.appendDraft(item.ownerKey, item.prefixText);
+      if (item.heldMessage) await this.settleHeldMessage(item, item.heldMessage);
+      else if (item.prefixText) {
+        await this.dependencies.appendDraft(item.ownerKey, item.prefixText);
+      }
       await this.dependencies
         .getClient()
         ?.acknowledge(id)
@@ -259,15 +349,46 @@ export class VoiceOutbox {
     }
 
     const transcript = job.transcript?.trim() ?? "";
+    const held = item.heldMessage;
     if (!transcript) {
-      if (item.prefixText) await this.dependencies.appendDraft(item.ownerKey, item.prefixText);
+      if (held?.sendsAlone) {
+        await this.releaseHeldMessage(held, item, item.prefixText);
+        await client.acknowledge(item.id);
+        await this.forget(item.id);
+        return;
+      }
+      if (item.prefixText && !held) {
+        await this.dependencies.appendDraft(item.ownerKey, item.prefixText);
+      }
       await this.persist({ ...item, prefixText: "", phase: "no-speech", remoteStatus: job.status });
       return;
     }
-    if (item.mode === "draft") await this.dependencies.appendDraft(item.ownerKey, transcript);
+    if (held) {
+      await this.releaseHeldMessage(held, item, withTranscript(item.prefixText, transcript));
+    } else if (item.mode === "draft") {
+      await this.dependencies.appendDraft(item.ownerKey, transcript);
+    }
     await client.acknowledge(item.id);
     await this.forget(item.id);
     if (item.submitDraft) this.dependencies.submitDraft(item.ownerKey);
+  }
+
+  private async releaseHeldMessage(
+    held: VoiceHeldMessage,
+    item: VoiceOutboxItem,
+    text: string,
+  ): Promise<void> {
+    if (!held.releasing) {
+      await this.persist({ ...item, heldMessage: { ...held, releasing: true } });
+    }
+    const released = await this.dependencies.heldMessages.release(held, text);
+    if (!released && !held.releasing) await this.dependencies.appendDraft(held.draftKey, text);
+  }
+
+  /** Typed text and attachments still go out; a message that would stay empty goes away. */
+  private async settleHeldMessage(item: VoiceOutboxItem, held: VoiceHeldMessage): Promise<void> {
+    if (held.sendsAlone) await this.releaseHeldMessage(held, item, item.prefixText);
+    else await this.dependencies.heldMessages.remove(held);
   }
 
   private async deliver(item: VoiceOutboxItem): Promise<void> {
@@ -308,12 +429,22 @@ export class VoiceOutbox {
   }
 
   private schedulePoll(): void {
-    if (!this.foreground || this.pollTimer !== null) return;
-    if (![...this.items.values()].some(isInFlight)) return;
+    if (this.pollTimer !== null || !this.shouldPoll()) return;
     this.pollTimer = setTimeout(() => {
       this.pollTimer = null;
       void this.poll().finally(() => this.schedulePoll());
     }, POLL_INTERVAL_MS);
+  }
+
+  /** Only a held message depends on this app to leave; anything else can wait for its return. */
+  private shouldPoll(): boolean {
+    const inFlight = [...this.items.values()].filter(isInFlight);
+    if (this.foreground) return inFlight.length > 0;
+    return (
+      this.backgroundedAt !== null &&
+      this.dependencies.now() - this.backgroundedAt < BACKGROUND_POLL_LIMIT_MS &&
+      inFlight.some((item) => item.heldMessage)
+    );
   }
 
   private cancelPoll(): void {

@@ -105,6 +105,8 @@ import {
   useWorkspaceBackNavigation,
 } from "../workspace/useAndroidWorkspaceNavigation";
 import { openSettings } from "../settings/settings-navigation";
+import { useVoiceOutboxItems } from "../voice-input/voiceOutboxRuntime";
+import { withVoiceMessages } from "../voice-input/voiceThreadMessages";
 import {
   InspectorContentScope,
   ThreadInspectorHeader,
@@ -369,6 +371,7 @@ function ThreadRouteContent(
   const selectedThreadDetail = Option.getOrNull(selectedThreadDetailState.data);
   const { selectedThreadCwd } = useSelectedThreadWorktree();
   const composer = useThreadComposerState();
+  const voiceItems = useVoiceOutboxItems();
   const gitState = useSelectedThreadGitState();
   const gitActions = useSelectedThreadGitActions();
   const requests = useSelectedThreadRequests();
@@ -1049,11 +1052,18 @@ function ThreadRouteContent(
           projectWorkspaceRoot={selectedThreadProject?.workspaceRoot ?? null}
           threadCwd={selectedThreadCwd}
           selectedThreadQueueCount={composer.selectedThreadQueueCount}
-          queuedMessages={
+          queuedMessages={withVoiceMessages(
             selectedThreadCreation && selectedThreadCreation.outcome?.kind !== "delivered"
               ? [selectedThreadCreation.message, ...composer.selectedThreadQueuedMessages]
-              : composer.selectedThreadQueuedMessages
-          }
+              : composer.selectedThreadQueuedMessages,
+            voiceItems,
+            {
+              environmentId: selectedThread.environmentId,
+              threadId: selectedThread.id,
+              threadKey: scopedThreadKey(selectedThread.environmentId, selectedThread.id),
+              agentBusy: composer.selectedThreadAgentBusy,
+            },
+          )}
           dispatchingMessageId={composer.dispatchingQueuedMessageId}
           layoutVariant={layout.variant}
           usesAutomaticContentInsets={usesNativeHeaderGlass}

@@ -231,6 +231,7 @@ import {
   ThreadWorkLog,
   WORK_GROUP_TOGGLE_HEIGHT,
 } from "./thread-work-log";
+import { VoiceMessageStatus } from "../voice-input/VoiceMessageStatus";
 import {
   appendGuestPendingMessages,
   appendPendingThreadMessages,
@@ -2197,13 +2198,18 @@ function renderFeedEntry(
                   ·
                 </Text>
               ) : null}
-              <Text className="font-t3-medium text-xs tabular-nums text-foreground-secondary">
-                {entry.pendingMessage && !entry.acknowledged ? "Pending" : timestampLabel}
-              </Text>
+              {entry.pendingMessage?.awaitingVoiceId && !entry.acknowledged ? (
+                <VoiceMessageStatus voiceId={entry.pendingMessage.awaitingVoiceId} />
+              ) : (
+                <Text className="font-t3-medium text-xs tabular-nums text-foreground-secondary">
+                  {entry.pendingMessage && !entry.acknowledged ? "Pending" : timestampLabel}
+                </Text>
+              )}
               {props.onEditPendingMessage !== null &&
               entry.pendingMessage &&
               !entry.acknowledged &&
               !entry.pendingMessage.creation &&
+              !entry.pendingMessage.awaitingVoiceId &&
               entry.pendingMessage.messageId !== props.dispatchingMessageId ? (
                 <Pressable
                   accessibilityRole="button"
@@ -2219,7 +2225,7 @@ function renderFeedEntry(
                   <SymbolView name="pencil" size={14} tintColor={iconSubtleColor} />
                 </Pressable>
               ) : null}
-              {presentation.text.trim().length > 0 ? (
+              {presentation.text.trim().length > 0 && !entry.pendingMessage?.awaitingVoiceId ? (
                 <UserMessageCopyButton
                   text={presentation.text}
                   onCopy={

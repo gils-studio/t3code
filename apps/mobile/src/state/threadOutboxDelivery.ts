@@ -1175,7 +1175,7 @@ export function createThreadOutboxDelivery(): {
         );
         return;
       }
-      if (editingQueuedMessageIds[messageId]) {
+      if (editingQueuedMessageIds[messageId] || nextQueuedMessage.awaitingVoiceId) {
         continue;
       }
       const blockedRecovery = blockedRecoveries.get(messageId);

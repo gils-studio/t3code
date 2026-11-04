@@ -307,6 +307,22 @@ describe("queued PR checkout", () => {
     expect(remaining()).toEqual([queued]);
   });
 
+  it("holds a new chat back until its transcript has replaced the text", async () => {
+    setOperateGrant("secondary", true);
+    const held = { ...message(), awaitingVoiceId: "voice-1" };
+    await state.manager.enqueue(held);
+    startDelivery();
+    expect(state.prepare).not.toHaveBeenCalled();
+    expect(remaining()).toEqual([held]);
+
+    const { awaitingVoiceId: _, ...released } = held;
+    const drained = runDrain();
+    await state.manager.update({ ...released, text: "transcript" });
+    await drained;
+    expect(state.start).toHaveBeenCalledOnce();
+    expect(remaining()).toEqual([]);
+  });
+
   it("does not launch a stale task edited while the PR checkout was running", async () => {
     setOperateGrant("secondary", true);
     const queued = queuedPullRequest();
