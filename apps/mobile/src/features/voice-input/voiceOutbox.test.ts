@@ -29,10 +29,14 @@ function harness(options: { readonly saved?: ReadonlyArray<VoiceOutboxItem> } = 
     drafts.set(ownerKey, `${drafts.get(ownerKey) ?? ""}${text}`);
   });
   let sequence = 0;
+  const live = { start: vi.fn(), stop: vi.fn() };
+  const submitDraft = vi.fn<(ownerKey: string) => void>();
   const outbox = new VoiceOutbox({
     store,
     getClient: () => client,
     appendDraft,
+    submitDraft,
+    live,
     newId: () => `voice-${(sequence += 1)}`,
     language: () => "de",
     now: () => sequence,
@@ -64,6 +68,7 @@ function harness(options: { readonly saved?: ReadonlyArray<VoiceOutboxItem> } = 
     client,
     drafts,
     appendDraft,
+    submitDraft,
     handoff,
     finish,
     done,
@@ -77,6 +82,7 @@ const item = (overrides: Partial<VoiceOutboxItem>): VoiceOutboxItem => ({
   ownerKey: "owner",
   threadId: "thread",
   mode: "draft",
+  submitDraft: false,
   prefixText: "",
   language: "de",
   sourceUri: null,
@@ -113,6 +119,29 @@ describe("VoiceOutbox", () => {
     await h.outbox.poll();
     expect(h.stored.size).toBe(0);
     expect(h.appendDraft).not.toHaveBeenCalled();
+  });
+
+  it("a voice message in a new chat lands in the draft, then asks the composer to send", async () => {
+    const h = harness();
+    const handoff = h.outbox.createHandoff({
+      ownerKey: "new-chat",
+      threadId: null,
+      readDraftText: () => "typed",
+      clearDraftText: () => {
+        throw new Error("the draft stays until the composer sends it");
+      },
+    });
+    handoff.recordingStarted("file:///cache/a.aac");
+    handoff.recordingFinished("file:///cache/a.aac", "send");
+    await h.outbox.poll();
+    h.jobs.set("voice-1", { ...h.done(""), status: "transcribing" });
+    await h.outbox.poll();
+    expect(h.submitDraft).not.toHaveBeenCalled();
+
+    h.jobs.set("voice-1", h.done("hallo"));
+    await h.outbox.poll();
+    expect(h.drafts.get("new-chat")).toBe("hallo");
+    expect(h.submitDraft).toHaveBeenCalledWith("new-chat");
   });
 
   it("keeps the item when the draft could not take the text", async () => {

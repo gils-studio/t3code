@@ -19,8 +19,9 @@ import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSi
 import { cn } from "../../lib/cn";
 import type { VoiceComposerPresentation } from "./voiceInputPresentation";
 import { VOICE_WAVEFORM_SAMPLE_COUNT } from "./voiceInputMetering";
+import { voiceLiveTail } from "./voiceLivePreview";
 import type { VoiceOutboxItem } from "./voiceOutbox";
-import { useVoiceOutboxItems, voiceOutbox } from "./voiceOutboxRuntime";
+import { useVoiceLiveText, useVoiceOutboxItems, voiceOutbox } from "./voiceOutboxRuntime";
 
 const DICTATION_TIMING = {
   duration: 220,
@@ -407,6 +408,23 @@ export function ComposerVoiceOutbox(props: { readonly ownerKey: string }) {
       </View>
     );
   });
+}
+
+/** The newest words of the running recording; the final text comes from the whole audio. */
+export function ComposerVoiceLiveText() {
+  const text = useVoiceLiveText();
+  if (!text) return null;
+  return (
+    <View className="min-w-0 px-4 py-2">
+      <Text
+        accessibilityLiveRegion="polite"
+        className="min-w-0 text-sm text-foreground-muted"
+        numberOfLines={3}
+      >
+        {voiceLiveTail(text)}
+      </Text>
+    </View>
+  );
 }
 
 export function ComposerDictationStatus(props: {

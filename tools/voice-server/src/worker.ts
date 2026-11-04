@@ -31,7 +31,7 @@ export const retryDelayMillis = (attempts: number): number =>
 /** Whisper labels silence and noise, as in "* Musik *"; only a text of nothing else is empty. */
 const ONLY_NOISE_MARKERS = /^(?:\s*(?:\*[^*]*\*|\[[^\]]*\]|\([^)]*\)))+\s*$/;
 
-function withoutNoiseMarkers(transcript: string): string {
+export function withoutNoiseMarkers(transcript: string): string {
   return ONLY_NOISE_MARKERS.test(transcript) ? "" : transcript.trim();
 }
 

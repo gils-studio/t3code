@@ -4,7 +4,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeTest from "node:test";
 
-import { foundNoSpeech } from "../src/adapters.ts";
+import { foundNoSpeech, transcriptionTimeoutMillis } from "../src/adapters.ts";
 import { JobStore, type JobMeta } from "../src/jobStore.ts";
 import { composeMessage, Worker, type ThreadSender, type Transcriber } from "../src/worker.ts";
 
@@ -201,4 +201,10 @@ NodeTest.test("only a clear zero from the VAD counts as silence", () => {
 NodeTest.test("typed draft text goes ahead of the transcript", () => {
   NodeAssert.equal(composeMessage("Kontext", "gesprochen"), "Kontext\n\ngesprochen");
   NodeAssert.equal(composeMessage("", "gesprochen"), "gesprochen");
+});
+
+NodeTest.test("a long recording gets a timeout the whisper-server request accepts", () => {
+  const millis = transcriptionTimeoutMillis(51.7784375);
+  NodeAssert.ok(millis > 120_000);
+  NodeAssert.doesNotThrow(() => AbortSignal.timeout(millis));
 });

@@ -1,6 +1,7 @@
 import * as SecureStore from "expo-secure-store";
 
 import { enqueueVoiceUpload } from "../../native/voiceUpload";
+import type { VoiceLiveClient } from "./voiceLivePreview";
 import type { VoiceJob, VoiceServerClient } from "./voiceOutbox";
 import { voiceOutboxAudioFile, voiceOutboxMetaFile } from "./voiceOutboxStore";
 
@@ -59,7 +60,9 @@ export async function fetchVoiceServerConfig(pairing: {
   return { ...pairing, environmentId: info.environmentId };
 }
 
-export function createVoiceServerClient(config: VoiceServerConfig): VoiceServerClient {
+export function createVoiceServerClient(
+  config: VoiceServerConfig,
+): VoiceServerClient & VoiceLiveClient {
   const post = async (id: string, action: "ack" | "retry") => {
     const response = await fetch(`${config.url}/v1/jobs/${id}/${action}`, {
       method: "POST",
@@ -83,6 +86,19 @@ export function createVoiceServerClient(config: VoiceServerConfig): VoiceServerC
       if (response.status === 404) return null;
       if (!response.ok) throw new Error(`Voice server status failed: ${response.status}`);
       return (await response.json()) as VoiceJob;
+    },
+    sendLiveAudio: async (id, offset, bytes, language) => {
+      const query = new URLSearchParams({ offset: String(offset), language });
+      const response = await fetch(`${config.url}/v1/live/${id}?${query.toString()}`, {
+        method: "PUT",
+        headers: { ...authorization(config.token), "content-type": "application/octet-stream" },
+        body: bytes,
+      });
+      // 409 carries the position to resume from, so it is an answer like any other.
+      if (!response.ok && response.status !== 409) {
+        throw new Error(`Voice server live audio failed: ${response.status}`);
+      }
+      return (await response.json()) as { readonly received: number; readonly text: string };
     },
     acknowledge: (id) => post(id, "ack"),
     retry: (id) => post(id, "retry"),

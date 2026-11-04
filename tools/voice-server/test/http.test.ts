@@ -14,11 +14,27 @@ const root = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "voice-http-")
 const store = new JobStore(root);
 await store.load();
 let created = 0;
+let warmed = 0;
+const liveChunks = new Map<string, string>();
+const endedLive: string[] = [];
 const server = createHttpServer({
   store,
   tokenHashes: () => [NodeCrypto.createHash("sha256").update(token).digest("hex")],
   environmentId: "env-1",
   onJobCreated: () => (created += 1),
+  warm: () => (warmed += 1),
+  live: {
+    append: async (id, offset, bytes) => {
+      const current = liveChunks.get(id) ?? "";
+      if (offset !== current.length) {
+        return { accepted: false, received: current.length, text: "" };
+      }
+      const next = current + Buffer.from(bytes).toString("utf8");
+      liveChunks.set(id, next);
+      return { accepted: true, received: next.length, text: `heard ${next}` };
+    },
+    end: async (id) => void endedLive.push(id),
+  },
 });
 await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
 const base = `http://127.0.0.1:${(server.address() as NodeNet.AddressInfo).port}`;
@@ -95,4 +111,32 @@ NodeTest.test("reports status and accepts the phone's acknowledgement", async ()
   const ack = await fetch(`${base}/v1/jobs/job-00002/ack`, { method: "POST", headers: auth });
   NodeAssert.equal(ack.status, 200);
   NodeAssert.notEqual(store.get("job-00002")?.acknowledgedAt, null);
+});
+
+NodeTest.test("streams live audio and tells a phone that lost track where to resume", async () => {
+  const live = (id: string, offset: number, audio: string, headers: object = auth) =>
+    fetch(`${base}/v1/live/${id}?offset=${offset}&language=de`, {
+      method: "PUT",
+      headers: { ...headers },
+      body: audio,
+    });
+  NodeAssert.equal((await live("job-00010", 0, "ab", {})).status, 401);
+  const warmedBefore = warmed;
+  const first = await live("job-00010", 0, "ab");
+  NodeAssert.equal(warmed, warmedBefore + 1);
+  NodeAssert.deepEqual(await first.json(), { received: 2, text: "heard ab" });
+  const lost = await live("job-00010", 9, "zz");
+  NodeAssert.equal(lost.status, 409);
+  NodeAssert.equal(((await lost.json()) as { received: number }).received, 2);
+  NodeAssert.equal((await live("..%2Fup", 0, "x")).status, 404);
+  NodeAssert.equal((await live("job-00010", -1, "x")).status, 400);
+
+  const upload = await fetch(`${base}/v1/jobs/job-00010`, {
+    method: "PUT",
+    headers: auth,
+    body: body("audio"),
+  });
+  NodeAssert.equal(upload.status, 201);
+  NodeAssert.ok(endedLive.includes("job-00010"));
+  NodeAssert.equal((await live("job-00010", 2, "late")).status, 410);
 });

@@ -7,13 +7,28 @@ import { isValidJobId, type Job, type JobMeta, type JobStore } from "./jobStore.
 
 const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
 const MAX_META_BYTES = 256 * 1024;
+const MAX_LIVE_CHUNK_BYTES = 4 * 1024 * 1024;
+const LANGUAGE_PATTERN = /^[a-z]{2,3}$|^auto$/;
 const NEWLINE = 10;
+
+export type LiveStream = {
+  append(
+    id: string,
+    offset: number,
+    bytes: Uint8Array,
+    language: string,
+  ): Promise<{ readonly accepted: boolean; readonly received: number; readonly text: string }>;
+  end(id: string): Promise<void>;
+};
 
 export type HttpOptions = {
   readonly store: JobStore;
   readonly tokenHashes: () => ReadonlyArray<string>;
   readonly environmentId: string;
   readonly onJobCreated: () => void;
+  /** Loads the model ahead of the work; failures only cost that head start. */
+  readonly warm: () => void;
+  readonly live: LiveStream;
   readonly now?: () => number;
 };
 
@@ -34,7 +49,7 @@ export function parseMeta(line: string): JobMeta | null {
     const threadId = typeof value.threadId === "string" ? value.threadId : "";
     if (value.mode === "send" && threadId.length === 0) return null;
     const language = typeof value.language === "string" ? value.language : "auto";
-    if (!/^[a-z]{2,3}$|^auto$/.test(language)) return null;
+    if (!LANGUAGE_PATTERN.test(language)) return null;
     return {
       mode: value.mode,
       threadId,
@@ -114,6 +129,46 @@ async function receiveUpload(
   }
 }
 
+async function readBody(
+  request: NodeHttp.IncomingMessage,
+  maxBytes: number,
+): Promise<Buffer | null> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of request as AsyncIterable<Buffer>) {
+    size += chunk.length;
+    if (size > maxBytes) return null;
+    chunks.push(chunk);
+  }
+  return request.complete ? Buffer.concat(chunks) : null;
+}
+
+/** PUT /v1/live/:id?offset=N appends to the preview; 409 tells the phone where to resume. */
+async function receiveLiveAudio(
+  request: NodeHttp.IncomingMessage,
+  response: NodeHttp.ServerResponse,
+  id: string,
+  query: URLSearchParams,
+  options: HttpOptions,
+): Promise<void> {
+  const offset = Number(query.get("offset"));
+  const language = query.get("language") ?? "auto";
+  if (!Number.isSafeInteger(offset) || offset < 0 || !LANGUAGE_PATTERN.test(language)) {
+    request.resume();
+    return sendJson(response, 400, { error: "invalid-live-audio" });
+  }
+  // The final upload ended this preview; a late chunk must not start it again.
+  if (options.store.get(id)) {
+    request.resume();
+    return sendJson(response, 410, { error: "recording-finished" });
+  }
+  const bytes = await readBody(request, MAX_LIVE_CHUNK_BYTES);
+  if (!bytes) return sendJson(response, 413, { error: "too-large" });
+  options.warm();
+  const { accepted, received, text } = await options.live.append(id, offset, bytes, language);
+  sendJson(response, accepted ? 200 : 409, { received, text });
+}
+
 export function createHttpServer(options: HttpOptions): NodeHttp.Server {
   const { store } = options;
   const handle = async (
@@ -125,10 +180,14 @@ export function createHttpServer(options: HttpOptions): NodeHttp.Server {
       sendJson(response, 401, { error: "unauthorized" });
       return;
     }
-    const { pathname } = new URL(request.url ?? "/", "http://localhost");
+    const { pathname, searchParams } = new URL(request.url ?? "/", "http://localhost");
     if (request.method === "GET" && pathname === "/v1/info") {
       sendJson(response, 200, { environmentId: options.environmentId });
       return;
+    }
+    const liveId = /^\/v1\/live\/([^/]+)$/.exec(pathname)?.[1];
+    if (request.method === "PUT" && liveId && isValidJobId(liveId)) {
+      return receiveLiveAudio(request, response, liveId, searchParams, options);
     }
     const match = /^\/v1\/jobs\/([^/]+)(\/ack|\/retry)?$/.exec(pathname);
     const id = match?.[1];
@@ -145,9 +204,11 @@ export function createHttpServer(options: HttpOptions): NodeHttp.Server {
         sendJson(response, 200, publicJob(store, existing));
         return;
       }
+      options.warm();
       const job = await receiveUpload(request, id, options);
       if (job === "invalid") return sendJson(response, 400, { error: "invalid-upload" });
       if (job === "too-large") return sendJson(response, 413, { error: "too-large" });
+      await options.live.end(id);
       options.onJobCreated();
       sendJson(response, 201, publicJob(store, job));
       return;

@@ -1,5 +1,6 @@
+import { File, FileMode } from "expo-file-system";
 import * as Linking from "expo-linking";
-import { useSyncExternalStore } from "react";
+import { useEffect, useEffectEvent, useSyncExternalStore } from "react";
 import { Alert, AppState } from "react-native";
 
 import { uuidv4 } from "../../lib/uuid";
@@ -9,6 +10,7 @@ import {
   getComposerDraftSnapshot,
   setComposerDraftText,
 } from "../../state/use-composer-drafts";
+import { VoiceLivePreview, type VoiceLiveClient } from "./voiceLivePreview";
 import { VoiceOutbox, type VoiceServerClient } from "./voiceOutbox";
 import { voiceOutboxFileStore } from "./voiceOutboxStore";
 import {
@@ -23,9 +25,10 @@ import {
 } from "./voiceServer";
 
 let server: VoiceServerConfig | null = null;
-let client: VoiceServerClient | null = null;
+let client: (VoiceServerClient & VoiceLiveClient) | null = null;
 let started = false;
 const serverListeners = new Set<() => void>();
+const draftSubmitListeners = new Set<(ownerKey: string) => void>();
 
 function deviceLanguage(): string {
   const language = Intl.DateTimeFormat().resolvedOptions().locale.split("-")[0] ?? "";
@@ -42,10 +45,30 @@ async function appendDraftText(ownerKey: string, text: string): Promise<void> {
   await flushComposerDrafts();
 }
 
+/** Opened per read: the recorder keeps growing the file, and a handle may cache its size. */
+async function readRecordedBytes(uri: string, offset: number, maxBytes: number) {
+  const handle = new File(uri).open(FileMode.ReadOnly);
+  try {
+    handle.offset = offset;
+    return await handle.readBytes(maxBytes);
+  } finally {
+    handle.close();
+  }
+}
+
+const voiceLivePreview = new VoiceLivePreview({
+  getClient: () => client,
+  readAudio: readRecordedBytes,
+});
+
 export const voiceOutbox = new VoiceOutbox({
   store: voiceOutboxFileStore,
   getClient: () => client,
   appendDraft: appendDraftText,
+  submitDraft: (ownerKey) => {
+    for (const listener of draftSubmitListeners) listener(ownerKey);
+  },
+  live: voiceLivePreview,
   newId: () => `voice-${uuidv4()}`,
   language: deviceLanguage,
   now: Date.now,
@@ -69,6 +92,22 @@ export const useVoiceServer = () => useSyncExternalStore(subscribeVoiceServer, g
 
 export const useVoiceOutboxItems = () =>
   useSyncExternalStore(voiceOutbox.subscribe, voiceOutbox.getSnapshot);
+
+export const useVoiceLiveText = () =>
+  useSyncExternalStore(voiceLivePreview.subscribe, voiceLivePreview.getText);
+
+/** Calls back when a voice message of this composer has landed in its draft and should go out. */
+export function useVoiceDraftSubmit(ownerKey: string, onSubmit: () => void): void {
+  const submit = useEffectEvent(onSubmit);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to the outbox, which lives outside React
+  useEffect(() => {
+    const listener = (key: string) => {
+      if (key === ownerKey) submit();
+    };
+    draftSubmitListeners.add(listener);
+    return () => void draftSubmitListeners.delete(listener);
+  }, [ownerKey]);
+}
 
 export async function pairVoiceServer(link: string): Promise<void> {
   const pairing = parseVoicePairLink(link);

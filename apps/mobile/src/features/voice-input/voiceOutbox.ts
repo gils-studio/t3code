@@ -4,7 +4,7 @@ import type {
 } from "@t3tools/client-runtime/voice-input";
 
 export const VOICE_SERVER_RECORDING_LIMIT_SECONDS = 30 * 60;
-const POLL_INTERVAL_MS = 2_000;
+const POLL_INTERVAL_MS = 1_000;
 
 export type VoiceJob = {
   readonly status: "queued" | "transcribing" | "sending" | "done" | "failed";
@@ -20,6 +20,8 @@ export type VoiceOutboxItem = {
   readonly ownerKey: string;
   readonly threadId: string | null;
   readonly mode: VoiceRecordingDisposition;
+  /** Without a thread the service cannot send, so an open composer sends the finished draft. */
+  readonly submitDraft: boolean;
   readonly prefixText: string;
   readonly language: string;
   /** Set until the audio has moved into outbox storage. */
@@ -53,6 +55,13 @@ export type VoiceOutboxDependencies = {
   readonly getClient: () => VoiceServerClient | null;
   /** Must resolve only once the text is durably part of the draft. */
   readonly appendDraft: (ownerKey: string, text: string) => Promise<void>;
+  /** Without a composer listening the text simply stays in the draft. */
+  readonly submitDraft: (ownerKey: string) => void;
+  /** Shows the words while they are spoken; the recording never depends on it. */
+  readonly live: {
+    start(id: string, uri: string, language: string): void;
+    stop(): void;
+  };
   readonly newId: () => string;
   readonly language: () => string;
   readonly now: () => number;
@@ -132,6 +141,7 @@ export class VoiceOutbox {
         ownerKey: target.ownerKey,
         threadId: target.threadId,
         mode: "draft",
+        submitDraft: false,
         prefixText: "",
         language: this.dependencies.language(),
         sourceUri: uri,
@@ -144,15 +154,21 @@ export class VoiceOutbox {
     };
     return {
       recordingLimitSeconds: VOICE_SERVER_RECORDING_LIMIT_SECONDS,
-      recordingStarted: (uri) => void this.enqueue(() => begin(uri)),
+      recordingStarted: (uri) =>
+        void this.enqueue(async () => {
+          await begin(uri);
+          this.dependencies.live.start(id!, uri, this.dependencies.language());
+        }),
       recordingFinished: (uri, disposition) => {
         const mode = target.threadId === null ? "draft" : disposition;
         const prefixText = mode === "send" ? target.readDraftText() : "";
         void this.enqueue(async () => {
+          this.dependencies.live.stop();
           if (id === null) await begin(uri);
           const item = this.items.get(id!);
           if (!item) return;
-          const finished = { ...item, mode, prefixText, sourceUri: uri };
+          const submitDraft = disposition === "send" && mode === "draft";
+          const finished = { ...item, mode, submitDraft, prefixText, sourceUri: uri };
           // The typed text may only leave the draft once it is stored with the recording.
           await this.persist(finished);
           if (mode === "send") target.clearDraftText();
@@ -161,6 +177,7 @@ export class VoiceOutbox {
       },
       recordingDiscarded: () => {
         void this.enqueue(async () => {
+          this.dependencies.live.stop();
           if (id !== null) await this.forget(id);
         });
       },
@@ -250,6 +267,7 @@ export class VoiceOutbox {
     if (item.mode === "draft") await this.dependencies.appendDraft(item.ownerKey, transcript);
     await client.acknowledge(item.id);
     await this.forget(item.id);
+    if (item.submitDraft) this.dependencies.submitDraft(item.ownerKey);
   }
 
   private async deliver(item: VoiceOutboxItem): Promise<void> {

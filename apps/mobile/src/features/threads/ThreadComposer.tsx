@@ -112,10 +112,12 @@ import {
   ComposerDictationStartAction,
   ComposerDictationStatus,
   ComposerDictationToolbar,
+  ComposerVoiceLiveText,
   ComposerVoiceOutbox,
 } from "../voice-input/ComposerDictationControl";
 import { useVoiceInputController } from "../voice-input/useVoiceInputController";
 import { resolveVoiceComposerPresentation } from "../voice-input/voiceInputPresentation";
+import { useVoiceDraftSubmit } from "../voice-input/voiceOutboxRuntime";
 import type { ExistingThreadSettingsRouteParams } from "./ThreadSettingsSheet";
 import {
   useThreadSettingsSheetPresentation,
@@ -711,6 +713,14 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     });
   };
 
+  const [voiceDraftSubmits, setVoiceDraftSubmits] = useState(0);
+  useVoiceDraftSubmit(composerDraftKey, () => setVoiceDraftSubmits((count) => count + 1));
+  const sendVoiceDraft = useEffectEvent(() => void handleSend());
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- handleSend must run after the render that sees the transcript in the draft
+  useEffect(() => {
+    if (voiceDraftSubmits > 0) sendVoiceDraft();
+  }, [voiceDraftSubmits]);
+
   const lockedProviderInstanceId = props.canSwitchProvider
     ? undefined
     : currentModelSelection.instanceId;
@@ -894,6 +904,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
             onDismiss={voiceInput.cancel}
           />
           <ComposerVoiceOutbox ownerKey={composerDraftKey} />
+          {showsCompactDictation ? <ComposerVoiceLiveText /> : null}
           {isExpanded ? editingAttachments : null}
           <View
             onLayout={(event) => {

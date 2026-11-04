@@ -22,7 +22,9 @@ Open the printed link on the phone, or paste it under Settings â†’ Microphone â†
 
 ## How it behaves
 
-- Recordings run one at a time, in order. Nothing stays in RAM or VRAM between them.
+- Recordings run one at a time, in order.
+- The model loads when a recording starts and unloads after two minutes without use (`whisperIdleSeconds`), so an idle PC holds no RAM or VRAM for it. If that server fails, the job falls back to `whisper-cli`.
+- While someone records, the app streams the growing file and shows a live preview. It is a quick, greedy pass that yields to finished recordings; the text that counts always comes from the full upload. Preview audio is deleted when the upload arrives, after five idle minutes, or at the next service start.
 - The phone gets its success only after the audio is on disk here; jobs survive a restart of the service.
 - A failing transcription retries, then ends as failed with the audio kept. Sending retries for as long as T3 is unreachable.
 - Finished jobs are removed after 14 days.

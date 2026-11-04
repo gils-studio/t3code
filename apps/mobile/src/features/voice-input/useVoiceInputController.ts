@@ -95,11 +95,7 @@ export function useVoiceInputController(input: {
   return {
     isAvailable:
       (global.isAvailable || usesServer) && (!global.isBusy || global.ownerKey === input.ownerKey),
-    canSend:
-      usesServer &&
-      input.serverTarget?.canSendText === true &&
-      input.serverTarget.threadId !== null &&
-      global.server?.environmentId === input.serverTarget.environmentId,
+    canSend: usesServer && input.serverTarget?.canSendText === true,
     state,
     audioLevels: global.audioLevels,
     elapsedSeconds: global.elapsedSeconds,
