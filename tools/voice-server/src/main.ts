@@ -5,7 +5,13 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import { T3CliSender, WhisperTranscriber } from "./adapters.ts";
-import { dataDirectory, readConfig, writeConfig, type Config } from "./config.ts";
+import {
+  dataDirectory,
+  readConfig,
+  readTokenHashes,
+  writeConfig,
+  type Config,
+} from "./config.ts";
 import { createHttpServer } from "./httpServer.ts";
 import { JobStore } from "./jobStore.ts";
 import { Worker } from "./worker.ts";
@@ -22,9 +28,24 @@ async function pair(): Promise<void> {
   console.log(`t3code-preview://voice-pair?${query.toString()}`);
 }
 
+/**
+ * A hard-killed service leaves its ssh behind, and sish gives a new connection
+ * a random name while the old one holds the subdomain.
+ */
+async function closeLeftoverTunnel(pidFile: string): Promise<void> {
+  const pid = Number(await NodeFSP.readFile(pidFile, "utf8").catch(() => ""));
+  if (!pid) return;
+  const processes = NodeChildProcess.execFileSync("tasklist", ["/FI", `PID eq ${pid}`], {
+    encoding: "utf8",
+  });
+  if (processes.toLowerCase().includes("ssh.exe")) process.kill(pid);
+}
+
 /** The phone reaches the service through the sish tunnel; ssh is restarted when it drops. */
-function keepTunnelOpen(config: Config, isStopped: () => boolean): void {
+async function keepTunnelOpen(config: Config, isStopped: () => boolean): Promise<void> {
   if (!config.tunnelName) return;
+  const pidFile = NodePath.join(dataDirectory(), "tunnel.pid");
+  await closeLeftoverTunnel(pidFile);
   const open = () => {
     if (isStopped()) return;
     const child = NodeChildProcess.spawn(
@@ -32,6 +53,7 @@ function keepTunnelOpen(config: Config, isStopped: () => boolean): void {
       ["devtunnel", "-N", "-R", `${config.tunnelName}:80:127.0.0.1:${config.port}`],
       { stdio: "ignore", windowsHide: true },
     );
+    if (child.pid) void NodeFSP.writeFile(pidFile, String(child.pid));
     child.on("error", (error) => log(`tunnel error: ${String(error)}`));
     child.on("close", () => {
       log("tunnel closed, reconnecting");
@@ -59,7 +81,7 @@ async function serve(): Promise<void> {
 
   const server = createHttpServer({
     store,
-    tokenHashes: () => config.tokenHashes,
+    tokenHashes: readTokenHashes,
     environmentId,
     onJobCreated: () => worker.notify(),
   });
@@ -67,7 +89,7 @@ async function serve(): Promise<void> {
   server.listen(config.port, "127.0.0.1", () => log(`listening on 127.0.0.1:${config.port}`));
 
   let stopped = false;
-  keepTunnelOpen(config, () => stopped);
+  void keepTunnelOpen(config, () => stopped);
   const shutdown = () => {
     stopped = true;
     server.close();

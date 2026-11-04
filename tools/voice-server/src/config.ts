@@ -1,3 +1,4 @@
+import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -26,6 +27,11 @@ export const configPath = (): string => NodePath.join(dataDirectory(), "config.j
 
 export async function readConfig(): Promise<Config> {
   return JSON.parse(await NodeFSP.readFile(configPath(), "utf8")) as Config;
+}
+
+/** Read per request, so a phone paired while the service runs works at once. */
+export function readTokenHashes(): ReadonlyArray<string> {
+  return (JSON.parse(NodeFS.readFileSync(configPath(), "utf8")) as Config).tokenHashes;
 }
 
 export async function writeConfig(config: Config): Promise<void> {

@@ -20,6 +20,12 @@ New-Item -ItemType Directory -Force $app | Out-Null
 
 if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
   Stop-ScheduledTask -TaskName $taskName
+  # Stopping the task ends only its console host, so the service itself goes by its port.
+  if (Test-Path $configPath) {
+    $installedPort = (Get-Content -Raw $configPath | ConvertFrom-Json).port
+    Get-NetTCPConnection -LocalPort $installedPort -State Listen -ErrorAction SilentlyContinue |
+      ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+  }
 }
 Copy-Item -Recurse -Force (Join-Path $PSScriptRoot "..\src") $app
 Copy-Item -Force (Join-Path $PSScriptRoot "..\package.json") $app
