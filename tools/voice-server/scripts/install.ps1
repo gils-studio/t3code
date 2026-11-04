@@ -55,8 +55,11 @@ $launcher = Join-Path $home_ "run.cmd"
 [IO.File]::WriteAllText($launcher, "@`"$node`" `"$app\src\main.ts`" >> `"$log`" 2>&1`r`n")
 $action = New-ScheduledTaskAction -Execute "conhost.exe" -Argument "--headless `"$launcher`"" -WorkingDirectory $app
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+# The default task priority 7 also lowers I/O and memory priority, and whisper inherits it:
+# its model is then the first thing evicted when RAM runs short.
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-  -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1)
+  -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) `
+  -Priority 4
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
 Start-ScheduledTask -TaskName $taskName
 Write-Output "Running. Pair a phone with: node `"$app\src\main.ts`" pair"

@@ -74,6 +74,7 @@ export class WhisperTranscriber implements Transcriber {
       );
       const { size } = await NodeFSP.stat(wav);
       const audioSeconds = size / 32_000;
+      const startedAt = Date.now();
       await run(
         this.config.whisperCli,
         [
@@ -92,6 +93,9 @@ export class WhisperTranscriber implements Transcriber {
         ],
         // Generous: a slow run is fine, only a hung process must not block the queue forever.
         { timeoutMillis: Math.max(120_000, audioSeconds * 3_000), cwd: this.config.whisperCwd },
+      );
+      console.log(
+        `${new Date().toISOString()} transcribed ${Math.round(audioSeconds)} s of audio in ${Date.now() - startedAt} ms`,
       );
       const text = await NodeFSP.readFile(`${outputBase}.txt`, "utf8");
       return text.replace(/\s*\n\s*/g, " ").trim();
