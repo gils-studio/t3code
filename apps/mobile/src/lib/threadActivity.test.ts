@@ -810,7 +810,7 @@ describe("buildThreadFeed", () => {
       messageId: MessageId.make("message-middle"),
       text: "Needle found in the build config.",
     };
-    const items = [userMessage(), command(), middle, assistantMessage()];
+    const items = [userMessage(), command(), middle, command(), assistantMessage()];
     for (const runless of [false, true]) {
       const feed = buildThreadFeed(
         items.map((item, position) =>
@@ -847,7 +847,8 @@ describe("buildThreadFeed", () => {
       projected(opening, 1),
       projected(command(), 2),
       projected(middle, 3),
-      projected(assistantMessage(), 4),
+      projected(command(), 4),
+      projected(assistantMessage(), 5),
     ]);
     const latestRun = {
       runId,
@@ -875,6 +876,7 @@ describe("buildThreadFeed", () => {
       "message",
       "activity-group",
       "message",
+      "activity-group",
       "message",
     ]);
     const anchor = {

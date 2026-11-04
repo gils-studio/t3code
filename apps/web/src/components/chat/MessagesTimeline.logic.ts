@@ -681,10 +681,10 @@ export function resolveAssistantMessageCopyState({
   };
 }
 
-/** Entries that are no work of their own, so the reply before them can still be a finished one. */
+/** Thinking and notices are no work of their own: the reply before them can be a finished one. */
 function timelineEntryIsWorkBetweenReplies(entry: TimelineEntry): boolean {
+  if (entry.kind !== "work") return true;
   return (
-    entry.kind === "work" &&
     !timelineEntryIsCompaction(entry) &&
     entry.entry.itemType !== "reasoning" &&
     entry.entry.itemType !== "notification" &&
@@ -694,8 +694,9 @@ function timelineEntryIsWorkBetweenReplies(entry: TimelineEntry): boolean {
 
 /**
  * The last assistant message of each response, plus every message the agent ended a turn with.
- * A background task can wake the agent inside the same run, and its short follow-up then comes
- * last; the reply before it, with no work in between, is the report and must stay visible.
+ * A stop hook or background task can send the agent back inside the same run, and its short
+ * follow-up then comes last; the reply before it, with no work in between, is the report and
+ * must stay visible.
  */
 function deriveTerminalAssistantMessageIds(timelineEntries: ReadonlyArray<TimelineEntry>) {
   const lastAssistantMessageIdByResponseKey = new Map<string, string>();
@@ -721,7 +722,7 @@ function deriveTerminalAssistantMessageIds(timelineEntries: ReadonlyArray<Timeli
       ? `turn:${message.runId}`
       : `unkeyed:${nullTurnResponseIndex}`;
     if (previousReply?.responseKey === responseKey) turnEndingMessageIds.add(previousReply.id);
-    previousReply = { responseKey, id: message.id };
+    previousReply = message.runId ? { responseKey, id: message.id } : null;
     lastAssistantMessageIdByResponseKey.set(responseKey, message.id);
   }
 

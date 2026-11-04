@@ -810,6 +810,18 @@ describe("deriveMessagesTimelineRows", () => {
           },
         },
         {
+          id: "work-entry-1",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:15Z",
+          entry: {
+            id: "work-1",
+            createdAt: "2026-01-01T00:00:15Z",
+            runId: "turn-1" as never,
+            label: "Ran command",
+            tone: "tool",
+          },
+        },
+        {
           id: "assistant-final-entry",
           kind: "message",
           createdAt: "2026-01-01T00:00:20Z",
@@ -3734,6 +3746,18 @@ describe("linked timeline resources", () => {
       message("steer", "user", 1),
       event("created", "thread_created"),
       message("after-steer", "assistant", 3),
+      {
+        kind: "work" as const,
+        id: "late-work",
+        createdAt: "2026-09-08T10:00:03Z",
+        entry: {
+          id: "late-work",
+          createdAt: "2026-09-08T10:00:03Z",
+          runId,
+          label: "Ran command",
+          tone: "tool" as const,
+        },
+      },
       message("final", "assistant", 4),
     ];
     const segmentKey = RunId.make(`${runId}:steer:steer`);
@@ -3750,6 +3774,7 @@ describe("linked timeline resources", () => {
       `turn-fold:${segmentKey}`,
       "created",
       "after-steer",
+      "late-work",
       "final",
       "summary:created",
       "assistant-meta:final",
