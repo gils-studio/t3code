@@ -252,9 +252,9 @@ describe("VoiceOutbox", () => {
       h.jobs.set("voice-1", h.done("hallo"));
       await h.outbox.poll();
       const enqueue = vi.fn(async () => {});
-      expect(
-        await h.outbox.holdThreadMessage("voice-1", held, "thread-key", "", enqueue),
-      ).toBe(false);
+      expect(await h.outbox.holdThreadMessage("voice-1", held, "thread-key", "", enqueue)).toBe(
+        false,
+      );
       expect(enqueue).not.toHaveBeenCalled();
     });
 

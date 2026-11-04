@@ -561,8 +561,9 @@ export function NewTaskDraftScreen(props: {
     locked: isComposerInteractionLocked,
   });
 
-  const handleStart = () => startTask();
-  useVoiceThreadStart(flow.draftKey, (voice) => void startTask(voice));
+  function handleStart() {
+    return startTask();
+  }
 
   async function startTask(
     voice?: VoiceThreadStart,
@@ -700,6 +701,8 @@ export function NewTaskDraftScreen(props: {
     scheduleUnusedComposerAttachmentCleanup(draftSnapshot.attachments);
     return message.messageId;
   }
+
+  useVoiceThreadStart(flow.draftKey, (voice) => void startTask(voice));
 
   // Keep the current surface until the local draft selection is ready. Publishing
   // an empty loading surface here flashes between two already-cached threads.
