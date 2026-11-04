@@ -701,7 +701,7 @@ function timelineEntryIsWorkBetweenReplies(entry: TimelineEntry): boolean {
 function deriveTerminalAssistantMessageIds(timelineEntries: ReadonlyArray<TimelineEntry>) {
   const lastAssistantMessageIdByResponseKey = new Map<string, string>();
   const turnEndingMessageIds = new Set<string>();
-  let previousReply: { readonly responseKey: string; readonly id: string } | null = null;
+  let previousReply = null as { readonly responseKey: string; readonly id: string } | null;
   let nullTurnResponseIndex = 0;
 
   for (const timelineEntry of timelineEntries) {

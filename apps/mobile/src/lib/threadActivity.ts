@@ -1076,7 +1076,7 @@ export function turnEndingAssistantMessageIds(
   feed: ReadonlyArray<ThreadFeedEntry>,
 ): ReadonlySet<string> {
   const ids = new Set<string>();
-  let previousReply: { readonly runId: RunId; readonly id: string } | null = null;
+  let previousReply = null as { readonly runId: RunId; readonly id: string } | null;
   for (const entry of feed) {
     if (entry.type !== "message") {
       const isWork =
