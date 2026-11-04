@@ -100,6 +100,16 @@ export function createVoiceServerClient(
       }
       return (await response.json()) as { readonly received: number; readonly text: string };
     },
+    claim: async (id) => {
+      const response = await fetch(`${config.url}/v1/jobs/${id}/claim`, {
+        method: "POST",
+        headers: authorization(config.token),
+      });
+      if (response.status === 404) return "missing";
+      if (response.status === 409) return "too-late";
+      if (!response.ok) throw new Error(`Voice server claim failed: ${response.status}`);
+      return "claimed";
+    },
     acknowledge: (id) => post(id, "ack"),
     retry: (id) => post(id, "retry"),
   };
