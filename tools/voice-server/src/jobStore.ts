@@ -21,6 +21,8 @@ export type JobMeta = {
 
 export type Job = JobMeta & {
   readonly id: string;
+  /** Comes from the device token, never from the phone's metadata. Missing on unnamed phones. */
+  readonly speaker?: string;
   readonly status: JobStatus;
   readonly transcript: string | null;
   readonly attempts: number;
@@ -89,7 +91,13 @@ export class JobStore {
   }
 
   /** Creates the job only after the audio is on disk; the caller then acknowledges the upload. */
-  async create(id: string, meta: JobMeta, partialAudioPath: string, now: number): Promise<Job> {
+  async create(
+    id: string,
+    meta: JobMeta,
+    partialAudioPath: string,
+    now: number,
+    speaker?: string,
+  ): Promise<Job> {
     const existing = this.jobs.get(id);
     if (existing) {
       await NodeFSP.rm(partialAudioPath, { force: true });
@@ -99,6 +107,7 @@ export class JobStore {
     const job: Job = {
       ...meta,
       id,
+      ...(speaker ? { speaker } : {}),
       status: "queued",
       transcript: null,
       attempts: 0,

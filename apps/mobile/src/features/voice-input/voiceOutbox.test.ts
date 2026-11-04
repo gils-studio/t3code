@@ -228,6 +228,16 @@ describe("VoiceOutbox", () => {
       expect(h.stored.size).toBe(0);
     });
 
+    it("names the speaker the service knows", async () => {
+      const h = await holdIt("typed");
+      h.jobs.set("voice-1", { ...h.done("hallo"), speaker: "Nils" });
+      await h.outbox.poll();
+      expect(h.heldMessages.release).toHaveBeenCalledWith(
+        held,
+        "[Voice message from Nils]\n\ntyped\n\nhallo",
+      );
+    });
+
     it("keeps the recording until the release is stored", async () => {
       const h = await holdIt();
       h.heldMessages.release.mockRejectedValueOnce(new Error("disk full"));

@@ -182,8 +182,12 @@ export class WhisperTranscriber implements Transcriber {
 }
 
 const THREAD_ID_PATTERN = /^[A-Za-z0-9_.:-]{1,128}$/;
-/** The CLI files messages under "agent"; clients show this prefix as the user's own words. */
-const VOICE_MESSAGE_PREFIX = "[Voice message]\n\n";
+/**
+ * The CLI files messages under "agent"; clients show this prefix as the user's own words and hide
+ * the name, which is there for the agent. The same text as in packages/client-runtime.
+ */
+export const voiceMessagePrefix = (speaker?: string) =>
+  speaker ? `[Voice message from ${speaker}]\n\n` : "[Voice message]\n\n";
 
 /** Uses T3's own CLI, so a busy thread gets the message as its next turn. */
 export class T3CliSender implements ThreadSender {
@@ -193,10 +197,10 @@ export class T3CliSender implements ThreadSender {
     this.config = config;
   }
 
-  async send(threadId: string, text: string): Promise<void> {
+  async send(threadId: string, text: string, speaker?: string): Promise<void> {
     this.assertThreadId(threadId);
     await run(this.config.t3Command, ["thread", "send", threadId, "-"], {
-      stdin: `${VOICE_MESSAGE_PREFIX}${text}`,
+      stdin: `${voiceMessagePrefix(speaker)}${text}`,
       timeoutMillis: 120_000,
       shell: true,
     });

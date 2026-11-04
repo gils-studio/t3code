@@ -32,11 +32,16 @@ export const IDLE_COMPACTION_TITLES = {
 const LEGACY_AUTOMATION_PREFIX = /^\[Triggered by schedule task: [^\r\n]+\]\r?\n\r?\n/;
 const LEGACY_AUTOMATION_MESSAGE_ID = /^scheduled-task-message:(.+):\d+:(?:scheduled|manual)$/;
 
-/** Also tells the agent that the words were dictated. tools/voice-server sends the same text. */
-export const VOICE_MESSAGE_PREFIX = "[Voice message]\n\n";
+/**
+ * Tells the agent that the words were dictated, and by whom when the voice service knows the
+ * phone. People never see it. tools/voice-server sends the same text.
+ */
+export const voiceMessagePrefix = (speaker?: string | null) =>
+  speaker ? `[Voice message from ${speaker}]\n\n` : "[Voice message]\n\n";
 
-export const stripVoiceMessagePrefix = (text: string) =>
-  text.startsWith(VOICE_MESSAGE_PREFIX) ? text.slice(VOICE_MESSAGE_PREFIX.length) : text;
+const VOICE_MESSAGE_PREFIX = /^\[Voice message(?: from [^\]\r\n]+)?\]\n\n/;
+
+export const stripVoiceMessagePrefix = (text: string) => text.replace(VOICE_MESSAGE_PREFIX, "");
 
 export function resolveUserMessageFileCards(message: {
   readonly text: string;
@@ -116,7 +121,7 @@ export function resolveUserMessagePresentation(message: {
   // The voice service sends through T3's CLI, which files the user's words under "agent".
   // Agents in a thread always carry a sender, so they cannot pass as the user this way.
   if (
-    message.text.startsWith(VOICE_MESSAGE_PREFIX) &&
+    VOICE_MESSAGE_PREFIX.test(message.text) &&
     (message.createdBy !== "agent" || message.senderThreadId === undefined)
   ) {
     return {

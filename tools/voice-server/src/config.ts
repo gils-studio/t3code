@@ -7,6 +7,8 @@ export type Config = {
   readonly port: number;
   /** SHA-256 hashes of device tokens; the tokens themselves are never stored here. */
   readonly tokenHashes: ReadonlyArray<string>;
+  /** Token hash to the person who owns that phone; agents read the name in the voice marker. */
+  readonly speakers?: Readonly<Record<string, string>>;
   readonly publicUrl: string;
   /** Subdomain on the sish tunnel host; null keeps the service on loopback only. */
   readonly tunnelName: string | null;
@@ -32,10 +34,12 @@ export async function readConfig(): Promise<Config> {
   return JSON.parse(await NodeFSP.readFile(configPath(), "utf8")) as Config;
 }
 
+const readConfigNow = () => JSON.parse(NodeFS.readFileSync(configPath(), "utf8")) as Config;
+
 /** Read per request, so a phone paired while the service runs works at once. */
-export function readTokenHashes(): ReadonlyArray<string> {
-  return (JSON.parse(NodeFS.readFileSync(configPath(), "utf8")) as Config).tokenHashes;
-}
+export const readTokenHashes = (): ReadonlyArray<string> => readConfigNow().tokenHashes;
+
+export const readSpeakers = (): Readonly<Record<string, string>> => readConfigNow().speakers ?? {};
 
 export async function writeConfig(config: Config): Promise<void> {
   const temporary = `${configPath()}.tmp`;
