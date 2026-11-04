@@ -10,6 +10,8 @@ import { createHttpServer } from "../src/httpServer.ts";
 import { JobStore } from "../src/jobStore.ts";
 
 const token = "device-token";
+const namedToken = "named-device-token";
+const sha256 = (value: string) => NodeCrypto.createHash("sha256").update(value).digest("hex");
 const root = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "voice-http-"));
 const store = new JobStore(root);
 await store.load();
@@ -19,7 +21,8 @@ const liveChunks = new Map<string, string>();
 const endedLive: string[] = [];
 const server = createHttpServer({
   store,
-  tokenHashes: () => [NodeCrypto.createHash("sha256").update(token).digest("hex")],
+  tokenHashes: () => [sha256(token), sha256(namedToken)],
+  speakers: () => ({ [sha256(namedToken)]: "Nils" }),
   environmentId: "env-1",
   onJobCreated: () => (created += 1),
   warm: () => (warmed += 1),
@@ -43,6 +46,23 @@ NodeTest.after(() => server.close());
 const auth = { authorization: `Bearer ${token}` };
 const body = (audio: string, meta: object = { mode: "send", threadId: "t", language: "de" }) =>
   `${JSON.stringify(meta)}\n${audio}`;
+
+NodeTest.test("names the speaker from the token, whatever the phone says", async () => {
+  const upload = (id: string, secret: string, meta: object) =>
+    fetch(`${base}/v1/jobs/${id}`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${secret}` },
+      body: body("audio", meta),
+    });
+  const meta = { mode: "send", threadId: "t", language: "de", speaker: "Gerrit" };
+  const named = await upload("speaker-named", namedToken, meta);
+  NodeAssert.equal(((await named.json()) as { speaker: unknown }).speaker, "Nils");
+  NodeAssert.equal(store.get("speaker-named")?.speaker, "Nils");
+  const unnamed = await upload("speaker-unnamed", token, meta);
+  NodeAssert.equal(((await unnamed.json()) as { speaker: unknown }).speaker, null);
+  NodeAssert.equal(store.get("speaker-unnamed")?.speaker, undefined);
+  await Promise.all(["speaker-named", "speaker-unnamed"].map((id) => store.remove(id)));
+});
 
 NodeTest.test("rejects requests without a valid token", async () => {
   NodeAssert.equal((await fetch(`${base}/v1/info`)).status, 401);

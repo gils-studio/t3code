@@ -2,7 +2,7 @@ import type {
   VoiceRecordingDisposition,
   VoiceRecordingHandoff,
 } from "@t3tools/client-runtime/voice-input";
-import { VOICE_MESSAGE_PREFIX } from "@t3tools/client-runtime/user-message";
+import { voiceMessagePrefix } from "@t3tools/client-runtime/user-message";
 
 export const VOICE_SERVER_RECORDING_LIMIT_SECONDS = 30 * 60;
 const POLL_INTERVAL_MS = 1_000;
@@ -14,6 +14,8 @@ export type VoiceJob = {
   readonly transcript: string | null;
   readonly queuePosition: number | null;
   readonly lastError: string | null;
+  /** Who this phone belongs to; the service knows it from the token. */
+  readonly speaker?: string | null;
 };
 
 export type VoiceOutboxPhase = "recording" | "uploading" | "processing" | "no-speech" | "failed";
@@ -436,7 +438,7 @@ export class VoiceOutbox {
         held,
         item,
         withTranscript(item.prefixText, transcript),
-        VOICE_MESSAGE_PREFIX,
+        voiceMessagePrefix(job.speaker),
       );
     } else if (item.mode === "draft") {
       await this.dependencies.appendDraft(item.ownerKey, transcript);

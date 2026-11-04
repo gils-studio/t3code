@@ -5,7 +5,14 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import { decodeToWav, isSilent, T3CliSender, WhisperTranscriber } from "./adapters.ts";
-import { dataDirectory, readConfig, readTokenHashes, writeConfig, type Config } from "./config.ts";
+import {
+  dataDirectory,
+  readConfig,
+  readSpeakers,
+  readTokenHashes,
+  writeConfig,
+  type Config,
+} from "./config.ts";
 import { createHttpServer } from "./httpServer.ts";
 import { JobStore } from "./jobStore.ts";
 import { LiveTranscriber } from "./live.ts";
@@ -18,12 +25,21 @@ const LIVE_PURGE_INTERVAL_MILLIS = 60_000;
 
 const log = (message: string) => console.log(`${new Date().toISOString()} ${message}`);
 
+const SPEAKER_PATTERN = /^[^\]\r\n]{1,40}$/;
+
 /** Prints a deep link once; only the token's hash is kept. */
-async function pair(): Promise<void> {
+async function pair(speaker: string | undefined): Promise<void> {
+  if (speaker !== undefined && !SPEAKER_PATTERN.test(speaker)) {
+    throw new Error("A speaker name has at most 40 characters and no closing bracket.");
+  }
   const config = await readConfig();
   const token = NodeCrypto.randomBytes(32).toString("base64url");
   const hash = NodeCrypto.createHash("sha256").update(token).digest("hex");
-  await writeConfig({ ...config, tokenHashes: [...config.tokenHashes, hash] });
+  await writeConfig({
+    ...config,
+    tokenHashes: [...config.tokenHashes, hash],
+    ...(speaker ? { speakers: { ...config.speakers, [hash]: speaker } } : {}),
+  });
   const query = new URLSearchParams({ url: config.publicUrl, token });
   console.log(`t3code-preview://voice-pair?${query.toString()}`);
 }
@@ -94,6 +110,7 @@ async function serve(): Promise<void> {
   const server = createHttpServer({
     store,
     tokenHashes: readTokenHashes,
+    speakers: readSpeakers,
     environmentId,
     onJobCreated: () => worker.notify(),
     warm: () => {
@@ -116,5 +133,5 @@ async function serve(): Promise<void> {
   process.on("SIGTERM", shutdown);
 }
 
-if (process.argv[2] === "pair") await pair();
+if (process.argv[2] === "pair") await pair(process.argv[3]);
 else await serve();

@@ -24,6 +24,7 @@ export type LiveStream = {
 export type HttpOptions = {
   readonly store: JobStore;
   readonly tokenHashes: () => ReadonlyArray<string>;
+  readonly speakers: () => Readonly<Record<string, string>>;
   readonly environmentId: string;
   readonly onJobCreated: () => void;
   /** Loads the model ahead of the work; failures only cost that head start. */
@@ -32,14 +33,21 @@ export type HttpOptions = {
   readonly now?: () => number;
 };
 
+const hashOfBearer = (header: string) =>
+  NodeCrypto.createHash("sha256").update(header.slice("Bearer ".length)).digest();
+
 export function isAuthorized(header: string | undefined, hashes: ReadonlyArray<string>): boolean {
   if (!header?.startsWith("Bearer ")) return false;
-  const candidate = NodeCrypto.createHash("sha256").update(header.slice("Bearer ".length)).digest();
+  const candidate = hashOfBearer(header);
   return hashes.some((hash) => {
     const expected = Buffer.from(hash, "hex");
     return expected.length === candidate.length && NodeCrypto.timingSafeEqual(expected, candidate);
   });
 }
+
+/** For a request that passed isAuthorized. */
+const speakerOf = (header: string, speakers: Readonly<Record<string, string>>) =>
+  speakers[hashOfBearer(header).toString("hex")];
 
 export function parseMeta(line: string): JobMeta | null {
   try {
@@ -73,6 +81,7 @@ function publicJob(store: JobStore, job: Job) {
     transcript: job.transcript,
     queuePosition: store.queuePosition(job.id),
     lastError: job.lastError,
+    speaker: job.speaker ?? null,
   };
 }
 
@@ -122,7 +131,13 @@ async function receiveUpload(
     } finally {
       await handle.close();
     }
-    return await store.create(id, meta, partial, (options.now ?? Date.now)());
+    return await store.create(
+      id,
+      meta,
+      partial,
+      (options.now ?? Date.now)(),
+      speakerOf(request.headers.authorization ?? "", options.speakers()),
+    );
   } finally {
     output.destroy();
     await NodeFSP.rm(partial, { force: true });

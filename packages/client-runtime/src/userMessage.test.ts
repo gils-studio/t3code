@@ -7,6 +7,8 @@ import {
   resolveUserMessageFileCards,
   resolveUserMessageGrouping,
   resolveUserMessagePresentation,
+  stripVoiceMessagePrefix,
+  voiceMessagePrefix,
 } from "./userMessage.ts";
 
 describe("resolveUserMessageGrouping", () => {
@@ -168,6 +170,26 @@ describe("resolveUserMessagePresentation", () => {
         scheduledTaskId: undefined,
       });
     }
+  });
+
+  it("hides who dictated a message from people", () => {
+    const text = `${voiceMessagePrefix("Nils")}Bitte die Tests ergaenzen`;
+    expect(text).toBe("[Voice message from Nils]\n\nBitte die Tests ergaenzen");
+    expect(resolveUserMessagePresentation({ role: "user", createdBy: "agent", text })).toEqual({
+      text: "Bitte die Tests ergaenzen",
+      attribution: null,
+      scheduledTaskId: undefined,
+      voice: true,
+    });
+    expect(stripVoiceMessagePrefix(text)).toBe("Bitte die Tests ergaenzen");
+  });
+
+  it("keeps a message that only mentions the marker", () => {
+    const text = "[Voice message from Nils] steht jetzt am Anfang";
+    expect(stripVoiceMessagePrefix(text)).toBe(text);
+    expect(resolveUserMessagePresentation({ role: "user", createdBy: "user", text }).voice).toBe(
+      undefined,
+    );
   });
 
   it("shows a dictated message as the user's, unless an agent in a thread sent it", () => {

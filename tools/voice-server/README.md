@@ -15,10 +15,12 @@ This copies the service to `~/.t3-voice/app`, writes `~/.t3-voice/config.json` o
 ## Pair a phone
 
 ```powershell
-node ~/.t3-voice/app/src/main.ts pair
+node ~/.t3-voice/app/src/main.ts pair Nils
 ```
 
 Open the printed link on the phone, or paste it under Settings → Microphone → Voice server. Each run creates a new device token and stores only its hash. To revoke a phone, remove its hash from `tokenHashes` in the config and restart the task.
+
+The name says who speaks on this phone. It lands in `speakers` in the config (token hash to name, editable by hand, read per request) and every message from that phone starts with `[Voice message from Nils]`, so an agent knows who it is talking to. Clients hide the marker. The name comes from the token, so a phone cannot claim to be someone else. Without a name the marker stays `[Voice message]`.
 
 ## How it behaves
 

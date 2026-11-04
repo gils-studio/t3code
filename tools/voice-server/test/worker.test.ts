@@ -6,6 +6,7 @@ import * as NodeTest from "node:test";
 
 import { foundNoSpeech, transcriptionTimeoutMillis } from "../src/adapters.ts";
 import { JobStore, type JobMeta } from "../src/jobStore.ts";
+import { voiceMessagePrefix } from "../src/adapters.ts";
 import { composeMessage, Worker, type ThreadSender, type Transcriber } from "../src/worker.ts";
 
 const meta = (overrides: Partial<JobMeta> = {}): JobMeta => ({
@@ -43,6 +44,24 @@ NodeTest.test("a voice message is transcribed and sent without the phone", async
   await worker.runNext();
   NodeAssert.deepEqual(sent, ["hallo"]);
   NodeAssert.equal(store.get("job-00001")?.status, "done");
+});
+
+NodeTest.test("the message carries the speaker of the recording", async () => {
+  const speakers: Array<string | undefined> = [];
+  const { store, worker } = await harness(
+    { transcribe: async () => "text" },
+    {
+      send: async (_thread, _text, speaker) => void speakers.push(speaker),
+      hasMessage: async () => false,
+    },
+  );
+  const partial = await store.partialAudioPath("job-speaker");
+  await NodeFSP.writeFile(partial, "audio");
+  await store.create("job-speaker", jobMeta, partial, 1, "Nils");
+  await worker.runNext();
+  NodeAssert.deepEqual(speakers, ["Nils"]);
+  NodeAssert.equal(voiceMessagePrefix("Nils"), "[Voice message from Nils]\n\n");
+  NodeAssert.equal(voiceMessagePrefix(), "[Voice message]\n\n");
 });
 
 NodeTest.test("draft jobs wait for the phone and are never sent", async () => {

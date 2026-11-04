@@ -67,4 +67,4 @@ $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoi
   -Priority 4
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
 Start-ScheduledTask -TaskName $taskName
-Write-Output "Running. Pair a phone with: node `"$app\src\main.ts`" pair"
+Write-Output "Running. Pair a phone with: node `"$app\src\main.ts`" pair <name>"
