@@ -211,6 +211,7 @@ import {
   type ThreadFeedEntry,
   type ThreadFeedLatestRun,
   messageFoldRunId,
+  turnEndingAssistantMessageIds,
 } from "../../lib/threadActivity";
 import type { ThreadContentPresentation } from "./threadContentPresentation";
 import {
@@ -3463,7 +3464,7 @@ export const ThreadFeed = memo(function ThreadFeed({
         terminalIdsByTurn.set(entry.message.runId, entry.message.id);
       }
     }
-    return new Set(terminalIdsByTurn.values());
+    return new Set([...terminalIdsByTurn.values(), ...turnEndingAssistantMessageIds(props.feed)]);
   })();
   // An interrupted run unfolds; a run that is no longer latest folds back.
   const [previousLatestRun, setPreviousLatestRun] = useState(props.latestRun);

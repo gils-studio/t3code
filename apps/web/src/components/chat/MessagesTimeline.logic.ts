@@ -681,12 +681,32 @@ export function resolveAssistantMessageCopyState({
   };
 }
 
+/** Thinking and notices are no work of their own: the reply before them can be a finished one. */
+function timelineEntryIsWorkBetweenReplies(entry: TimelineEntry): boolean {
+  if (entry.kind !== "work") return true;
+  return (
+    !timelineEntryIsCompaction(entry) &&
+    entry.entry.itemType !== "reasoning" &&
+    entry.entry.itemType !== "notification" &&
+    entry.entry.itemType !== "system_notice"
+  );
+}
+
+/**
+ * The last assistant message of each response, plus every message the agent ended a turn with.
+ * A stop hook or background task can send the agent back inside the same run, and its short
+ * follow-up then comes last; the reply before it, with no work in between, is the report and
+ * must stay visible.
+ */
 function deriveTerminalAssistantMessageIds(timelineEntries: ReadonlyArray<TimelineEntry>) {
   const lastAssistantMessageIdByResponseKey = new Map<string, string>();
+  const turnEndingMessageIds = new Set<string>();
+  let previousReply = null as { readonly responseKey: string; readonly id: string } | null;
   let nullTurnResponseIndex = 0;
 
   for (const timelineEntry of timelineEntries) {
     if (timelineEntry.kind !== "message") {
+      if (timelineEntryIsWorkBetweenReplies(timelineEntry)) previousReply = null;
       continue;
     }
     const { message } = timelineEntry;
@@ -701,10 +721,12 @@ function deriveTerminalAssistantMessageIds(timelineEntries: ReadonlyArray<Timeli
     const responseKey = message.runId
       ? `turn:${message.runId}`
       : `unkeyed:${nullTurnResponseIndex}`;
+    if (previousReply?.responseKey === responseKey) turnEndingMessageIds.add(previousReply.id);
+    previousReply = message.runId ? { responseKey, id: message.id } : null;
     lastAssistantMessageIdByResponseKey.set(responseKey, message.id);
   }
 
-  return new Set(lastAssistantMessageIdByResponseKey.values());
+  return new Set([...turnEndingMessageIds, ...lastAssistantMessageIdByResponseKey.values()]);
 }
 
 interface TurnFold {
@@ -1122,6 +1144,9 @@ function deriveTurnFolds(input: {
       : group.entries.length;
     for (const [index, entry] of group.entries.entries()) {
       if (entry.id === group.terminalEntry?.id) {
+        continue;
+      }
+      if (entry.kind === "message" && input.terminalAssistantMessageIds.has(entry.message.id)) {
         continue;
       }
       const isCompaction = timelineEntryIsCompaction(entry);

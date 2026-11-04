@@ -810,7 +810,7 @@ describe("buildThreadFeed", () => {
       messageId: MessageId.make("message-middle"),
       text: "Needle found in the build config.",
     };
-    const items = [userMessage(), command(), middle, assistantMessage()];
+    const items = [userMessage(), command(), middle, command(), assistantMessage()];
     for (const runless of [false, true]) {
       const feed = buildThreadFeed(
         items.map((item, position) =>
@@ -847,7 +847,8 @@ describe("buildThreadFeed", () => {
       projected(opening, 1),
       projected(command(), 2),
       projected(middle, 3),
-      projected(assistantMessage(), 4),
+      projected(command(), 4),
+      projected(assistantMessage(), 5),
     ]);
     const latestRun = {
       runId,
@@ -875,6 +876,7 @@ describe("buildThreadFeed", () => {
       "message",
       "activity-group",
       "message",
+      "activity-group",
       "message",
     ]);
     const anchor = {
@@ -907,8 +909,7 @@ describe("buildThreadFeed", () => {
     ]);
   });
 
-  // regression: #21393 show plans and fold settled progress notes
-  it("folds progress even when a response has no tool calls", () => {
+  it("keeps a finished report visible when a background follow-up comes last", () => {
     const feed = buildThreadFeed([
       projected(userMessage(), 0),
       projected(
@@ -926,7 +927,7 @@ describe("buildThreadFeed", () => {
     const presented = deriveThreadFeedPresentation(feed, null, new Set());
     expect(presented.map((entry) => entry.id)).toEqual([
       "message-user",
-      "run-fold:run-1",
+      "message-opening",
       "message-assistant",
     ]);
   });
