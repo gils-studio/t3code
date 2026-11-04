@@ -1,5 +1,5 @@
-import { spawn } from "node:child_process";
-import * as fs from "node:fs/promises";
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFSP from "node:fs/promises";
 
 import type { Config } from "./config.ts";
 import type { Job, JobStore } from "./jobStore.ts";
@@ -18,7 +18,7 @@ function run(
   options: RunOptions,
 ): Promise<{ readonly stdout: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    const child = NodeChildProcess.spawn(command, args, {
       cwd: options.cwd,
       shell: options.shell ?? false,
       windowsHide: true,
@@ -72,7 +72,7 @@ export class WhisperTranscriber implements Transcriber {
         ],
         { timeoutMillis: 120_000 },
       );
-      const { size } = await fs.stat(wav);
+      const { size } = await NodeFSP.stat(wav);
       const audioSeconds = size / 32_000;
       await run(
         this.config.whisperCli,
@@ -93,11 +93,11 @@ export class WhisperTranscriber implements Transcriber {
         // Generous: a slow run is fine, only a hung process must not block the queue forever.
         { timeoutMillis: Math.max(120_000, audioSeconds * 3_000), cwd: this.config.whisperCwd },
       );
-      const text = await fs.readFile(`${outputBase}.txt`, "utf8");
+      const text = await NodeFSP.readFile(`${outputBase}.txt`, "utf8");
       return text.replace(/\s*\n\s*/g, " ").trim();
     } finally {
-      await fs.rm(wav, { force: true });
-      await fs.rm(`${outputBase}.txt`, { force: true });
+      await NodeFSP.rm(wav, { force: true });
+      await NodeFSP.rm(`${outputBase}.txt`, { force: true });
     }
   }
 }
@@ -123,10 +123,14 @@ export class T3CliSender implements ThreadSender {
 
   async hasMessage(threadId: string, text: string): Promise<boolean> {
     this.assertThreadId(threadId);
-    const { stdout } = await run(this.config.t3Command, ["thread", "show", threadId, "--json", "--messages", "50"], {
-      timeoutMillis: 60_000,
-      shell: true,
-    });
+    const { stdout } = await run(
+      this.config.t3Command,
+      ["thread", "show", threadId, "--json", "--messages", "50"],
+      {
+        timeoutMillis: 60_000,
+        shell: true,
+      },
+    );
     return stdout.includes(JSON.stringify(text).slice(1, -1));
   }
 

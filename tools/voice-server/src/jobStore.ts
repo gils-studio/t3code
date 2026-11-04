@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
+import * as NodeCrypto from "node:crypto";
+import * as NodeFSP from "node:fs/promises";
+import * as NodePath from "node:path";
 
 export type JobMode = "draft" | "send";
 
@@ -47,8 +47,8 @@ export class JobStore {
   }
 
   async load(): Promise<void> {
-    await fs.mkdir(this.root, { recursive: true });
-    for (const entry of await fs.readdir(this.root, { withFileTypes: true })) {
+    await NodeFSP.mkdir(this.root, { recursive: true });
+    for (const entry of await NodeFSP.readdir(this.root, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
       const job = await this.readJob(entry.name);
       if (job) this.jobs.set(job.id, job);
@@ -75,26 +75,26 @@ export class JobStore {
   }
 
   audioPath(id: string): string {
-    return path.join(this.root, id, "audio.aac");
+    return NodePath.join(this.root, id, "audio.aac");
   }
 
   workPath(id: string, name: string): string {
-    return path.join(this.root, id, name);
+    return NodePath.join(this.root, id, name);
   }
 
   async partialAudioPath(id: string): Promise<string> {
-    await fs.mkdir(path.join(this.root, id), { recursive: true });
-    return path.join(this.root, id, `upload-${randomUUID()}.part`);
+    await NodeFSP.mkdir(NodePath.join(this.root, id), { recursive: true });
+    return NodePath.join(this.root, id, `upload-${NodeCrypto.randomUUID()}.part`);
   }
 
   /** Creates the job only after the audio is on disk; the caller then acknowledges the upload. */
   async create(id: string, meta: JobMeta, partialAudioPath: string, now: number): Promise<Job> {
     const existing = this.jobs.get(id);
     if (existing) {
-      await fs.rm(partialAudioPath, { force: true });
+      await NodeFSP.rm(partialAudioPath, { force: true });
       return existing;
     }
-    await fs.rename(partialAudioPath, this.audioPath(id));
+    await NodeFSP.rename(partialAudioPath, this.audioPath(id));
     const job: Job = {
       ...meta,
       id,
@@ -122,26 +122,26 @@ export class JobStore {
 
   async remove(id: string): Promise<void> {
     this.jobs.delete(id);
-    await fs.rm(path.join(this.root, id), { recursive: true, force: true });
+    await NodeFSP.rm(NodePath.join(this.root, id), { recursive: true, force: true });
   }
 
   private async persist(job: Job): Promise<void> {
-    const target = path.join(this.root, job.id, "job.json");
-    const temporary = `${target}.${randomUUID()}.tmp`;
-    const handle = await fs.open(temporary, "w");
+    const target = NodePath.join(this.root, job.id, "job.json");
+    const temporary = `${target}.${NodeCrypto.randomUUID()}.tmp`;
+    const handle = await NodeFSP.open(temporary, "w");
     try {
       await handle.writeFile(JSON.stringify(job));
       await handle.sync();
     } finally {
       await handle.close();
     }
-    await fs.rename(temporary, target);
+    await NodeFSP.rename(temporary, target);
     this.jobs.set(job.id, job);
   }
 
   private async readJob(id: string): Promise<Job | null> {
     try {
-      return JSON.parse(await fs.readFile(path.join(this.root, id, "job.json"), "utf8")) as Job;
+      return JSON.parse(await NodeFSP.readFile(NodePath.join(this.root, id, "job.json"), "utf8")) as Job;
     } catch {
       // No job.json: an upload that never finished. The phone still holds the audio and retries.
       return null;

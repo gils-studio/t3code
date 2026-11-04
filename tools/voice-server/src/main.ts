@@ -1,8 +1,8 @@
-import { spawn } from "node:child_process";
-import { createHash, randomBytes } from "node:crypto";
-import * as fs from "node:fs/promises";
-import * as os from "node:os";
-import * as path from "node:path";
+import * as NodeChildProcess from "node:child_process";
+import * as NodeCrypto from "node:crypto";
+import * as NodeFSP from "node:fs/promises";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 
 import { T3CliSender, WhisperTranscriber } from "./adapters.ts";
 import { dataDirectory, readConfig, writeConfig, type Config } from "./config.ts";
@@ -15,8 +15,8 @@ const log = (message: string) => console.log(`${new Date().toISOString()} ${mess
 /** Prints a deep link once; only the token's hash is kept. */
 async function pair(): Promise<void> {
   const config = await readConfig();
-  const token = randomBytes(32).toString("base64url");
-  const hash = createHash("sha256").update(token).digest("hex");
+  const token = NodeCrypto.randomBytes(32).toString("base64url");
+  const hash = NodeCrypto.createHash("sha256").update(token).digest("hex");
   await writeConfig({ ...config, tokenHashes: [...config.tokenHashes, hash] });
   const query = new URLSearchParams({ url: config.publicUrl, token });
   console.log(`t3code-preview://voice-pair?${query.toString()}`);
@@ -27,7 +27,7 @@ function keepTunnelOpen(config: Config, isStopped: () => boolean): void {
   if (!config.tunnelName) return;
   const open = () => {
     if (isStopped()) return;
-    const child = spawn(
+    const child = NodeChildProcess.spawn(
       "ssh",
       ["devtunnel", "-N", "-R", `${config.tunnelName}:80:127.0.0.1:${config.port}`],
       { stdio: "ignore", windowsHide: true },
@@ -44,9 +44,9 @@ function keepTunnelOpen(config: Config, isStopped: () => boolean): void {
 async function serve(): Promise<void> {
   const config = await readConfig();
   const environmentId = (
-    await fs.readFile(path.join(os.homedir(), ".t3", "userdata", "environment-id"), "utf8")
+    await NodeFSP.readFile(NodePath.join(NodeOS.homedir(), ".t3", "userdata", "environment-id"), "utf8")
   ).trim();
-  const store = new JobStore(path.join(dataDirectory(), "jobs"));
+  const store = new JobStore(NodePath.join(dataDirectory(), "jobs"));
   await store.load();
   const worker = new Worker({
     store,

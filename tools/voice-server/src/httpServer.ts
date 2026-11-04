@@ -1,7 +1,7 @@
-import { createHash, timingSafeEqual } from "node:crypto";
-import { createWriteStream } from "node:fs";
-import * as fs from "node:fs/promises";
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import * as NodeCrypto from "node:crypto";
+import * as NodeFS from "node:fs";
+import * as NodeFSP from "node:fs/promises";
+import * as NodeHttp from "node:http";
 
 import { isValidJobId, type Job, type JobMeta, type JobStore } from "./jobStore.ts";
 
@@ -19,10 +19,10 @@ export type HttpOptions = {
 
 export function isAuthorized(header: string | undefined, hashes: ReadonlyArray<string>): boolean {
   if (!header?.startsWith("Bearer ")) return false;
-  const candidate = createHash("sha256").update(header.slice("Bearer ".length)).digest();
+  const candidate = NodeCrypto.createHash("sha256").update(header.slice("Bearer ".length)).digest();
   return hashes.some((hash) => {
     const expected = Buffer.from(hash, "hex");
-    return expected.length === candidate.length && timingSafeEqual(expected, candidate);
+    return expected.length === candidate.length && NodeCrypto.timingSafeEqual(expected, candidate);
   });
 }
 
@@ -46,7 +46,7 @@ export function parseMeta(line: string): JobMeta | null {
   }
 }
 
-function sendJson(response: ServerResponse, status: number, body: unknown): void {
+function sendJson(response: NodeHttp.ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
   response.end(JSON.stringify(body));
 }
@@ -67,13 +67,13 @@ function publicJob(store: JobStore, job: Job) {
  * The response is sent only after the audio is durably on disk.
  */
 async function receiveUpload(
-  request: IncomingMessage,
+  request: NodeHttp.IncomingMessage,
   id: string,
   options: HttpOptions,
 ): Promise<Job | "invalid" | "too-large"> {
   const { store } = options;
   const partial = await store.partialAudioPath(id);
-  const output = createWriteStream(partial);
+  const output = NodeFS.createWriteStream(partial);
   let header = Buffer.alloc(0);
   let meta: JobMeta | null = null;
   let received = 0;
@@ -101,7 +101,7 @@ async function receiveUpload(
     await new Promise<void>((resolve, reject) =>
       output.end((error?: Error | null) => (error ? reject(error) : resolve())),
     );
-    const handle = await fs.open(partial, "r+");
+    const handle = await NodeFSP.open(partial, "r+");
     try {
       await handle.sync();
     } finally {
@@ -110,13 +110,13 @@ async function receiveUpload(
     return await store.create(id, meta, partial, (options.now ?? Date.now)());
   } finally {
     output.destroy();
-    await fs.rm(partial, { force: true });
+    await NodeFSP.rm(partial, { force: true });
   }
 }
 
-export function createHttpServer(options: HttpOptions): Server {
+export function createHttpServer(options: HttpOptions): NodeHttp.Server {
   const { store } = options;
-  const handle = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
+  const handle = async (request: NodeHttp.IncomingMessage, response: NodeHttp.ServerResponse): Promise<void> => {
     if (!isAuthorized(request.headers.authorization, options.tokenHashes())) {
       request.resume();
       sendJson(response, 401, { error: "unauthorized" });
@@ -178,7 +178,7 @@ export function createHttpServer(options: HttpOptions): Server {
     sendJson(response, 405, { error: "method-not-allowed" });
   };
 
-  return createServer((request, response) => {
+  return NodeHttp.createServer((request, response) => {
     handle(request, response).catch((error: unknown) => {
       console.error("request failed", error);
       if (!response.headersSent) sendJson(response, 500, { error: "internal" });

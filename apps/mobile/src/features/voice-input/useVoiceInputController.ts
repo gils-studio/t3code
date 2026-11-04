@@ -66,7 +66,8 @@ export function useVoiceInputController(input: {
         ? voiceOutbox.createHandoff({
             ownerKey,
             // Only the service's own environment can receive a message from it.
-            threadId: server.environmentId === serverTarget.environmentId ? serverTarget.threadId : null,
+            threadId:
+              server.environmentId === serverTarget.environmentId ? serverTarget.threadId : null,
             readDraftText: () => captured.readDraftMessage() ?? "",
             clearDraftText: serverTarget.clearDraftText,
           })

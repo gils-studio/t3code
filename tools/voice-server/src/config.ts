@@ -1,6 +1,6 @@
-import * as fs from "node:fs/promises";
-import * as os from "node:os";
-import * as path from "node:path";
+import * as NodeFSP from "node:fs/promises";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 
 export type Config = {
   readonly port: number;
@@ -20,16 +20,16 @@ export type Config = {
 };
 
 export const dataDirectory = (): string =>
-  process.env.T3_VOICE_HOME ?? path.join(os.homedir(), ".t3-voice");
+  process.env.T3_VOICE_HOME ?? NodePath.join(NodeOS.homedir(), ".t3-voice");
 
-export const configPath = (): string => path.join(dataDirectory(), "config.json");
+export const configPath = (): string => NodePath.join(dataDirectory(), "config.json");
 
 export async function readConfig(): Promise<Config> {
-  return JSON.parse(await fs.readFile(configPath(), "utf8")) as Config;
+  return JSON.parse(await NodeFSP.readFile(configPath(), "utf8")) as Config;
 }
 
 export async function writeConfig(config: Config): Promise<void> {
   const temporary = `${configPath()}.tmp`;
-  await fs.writeFile(temporary, JSON.stringify(config, null, 2));
-  await fs.rename(temporary, configPath());
+  await NodeFSP.writeFile(temporary, JSON.stringify(config, null, 2));
+  await NodeFSP.rename(temporary, configPath());
 }

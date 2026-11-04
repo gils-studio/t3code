@@ -186,7 +186,10 @@ export class VoiceOutbox {
       const item = this.items.get(id);
       if (!item || isInFlight(item) || item.phase === "recording") return;
       if (item.prefixText) await this.dependencies.appendDraft(item.ownerKey, item.prefixText);
-      await this.dependencies.getClient()?.acknowledge(id).catch(() => {});
+      await this.dependencies
+        .getClient()
+        ?.acknowledge(id)
+        .catch(() => {});
       await this.forget(id);
     });
   }
