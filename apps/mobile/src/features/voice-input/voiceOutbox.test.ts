@@ -217,7 +217,7 @@ describe("VoiceOutbox", () => {
       expect(h.stored.get("voice-1")).toMatchObject({ ownerKey: "thread-key", heldMessage: held });
       h.jobs.set("voice-1", h.done("hallo"));
       await h.outbox.poll();
-      expect(h.heldMessages.release).toHaveBeenCalledWith(held, "typed\n\nhallo");
+      expect(h.heldMessages.release).toHaveBeenCalledWith(held, "[Voice message]\n\ntyped\n\nhallo");
       expect(h.appendDraft).not.toHaveBeenCalled();
       expect(h.submitDraft).not.toHaveBeenCalled();
       expect(h.stored.size).toBe(0);
@@ -325,7 +325,7 @@ describe("VoiceOutbox", () => {
       expect(h.outbox.pendingDraftItemId("owner")).toBe(null);
       h.jobs.set("voice-1", h.done("hallo"));
       await h.outbox.poll();
-      expect(h.heldMessages.release).toHaveBeenCalledWith(held, "typed\n\nhallo");
+      expect(h.heldMessages.release).toHaveBeenCalledWith(held, "[Voice message]\n\ntyped\n\nhallo");
       expect(h.appendDraft).not.toHaveBeenCalled();
     });
 
