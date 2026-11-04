@@ -53,6 +53,7 @@ function harness(options: { readonly saved?: ReadonlyArray<VoiceOutboxItem> } = 
   const handoff = outbox.createHandoff({
     ownerKey: "owner",
     threadId: "thread",
+    sendsThroughDraft: () => false,
     readDraftText: () => draftText,
     clearDraftText: () => {
       draftText = "";
@@ -136,6 +137,7 @@ describe("VoiceOutbox", () => {
     const handoff = h.outbox.createHandoff({
       ownerKey: "new-chat",
       threadId: null,
+      sendsThroughDraft: () => false,
       readDraftText: () => "typed",
       clearDraftText: () => {
         throw new Error("the draft stays until the composer sends it");
@@ -160,12 +162,14 @@ describe("VoiceOutbox", () => {
       threadId: "new-thread",
       messageId: "message",
       draftKey: "new-chat",
+      sendsAlone: false,
     };
     const sendFromNewChat = async () => {
       const h = harness();
       const handoff = h.outbox.createHandoff({
         ownerKey: "new-chat",
         threadId: null,
+        sendsThroughDraft: () => false,
         readDraftText: () => "",
         clearDraftText: () => {},
       });
@@ -229,11 +233,14 @@ describe("VoiceOutbox", () => {
       expect(h.stored.size).toBe(0);
     });
 
-    it("sends what was typed when the recording held no speech", async () => {
-      const h = await holdIt("typed");
+    it("sends the typed text or image when the recording held no speech", async () => {
+      const h = await sendFromNewChat();
+      const alone = { ...held, sendsAlone: true };
+      await h.outbox.holdThreadMessage("voice-1", alone, "thread-key", "", async () => {});
       h.jobs.set("voice-1", h.done(""));
       await h.outbox.poll();
-      expect(h.heldMessages.release).toHaveBeenCalledWith(held, "typed");
+      expect(h.heldMessages.release).toHaveBeenCalledWith(alone, "");
+      expect(h.heldMessages.remove).not.toHaveBeenCalled();
       expect(h.stored.size).toBe(0);
     });
 
@@ -245,6 +252,17 @@ describe("VoiceOutbox", () => {
       await h.outbox.dismiss("voice-1");
       expect(h.heldMessages.remove).toHaveBeenCalledWith(held);
       expect(h.stored.size).toBe(0);
+    });
+
+    it("never removes an image with the failed recording it waited for", async () => {
+      const h = await sendFromNewChat();
+      const alone = { ...held, sendsAlone: true };
+      await h.outbox.holdThreadMessage("voice-1", alone, "thread-key", "", async () => {});
+      h.jobs.set("voice-1", { ...h.done(""), status: "failed", lastError: "broken" });
+      await h.outbox.poll();
+      await h.outbox.dismiss("voice-1");
+      expect(h.heldMessages.remove).not.toHaveBeenCalled();
+      expect(h.heldMessages.release).toHaveBeenCalledWith(alone, "");
     });
 
     it("refuses a recording that already went through the draft", async () => {
@@ -267,6 +285,54 @@ describe("VoiceOutbox", () => {
         h.outbox.holdThreadMessage("voice-1", held, "thread-key", "", failing),
       ).rejects.toThrow("disk full");
       expect(h.stored.get("voice-1")).toMatchObject({ ownerKey: "new-chat", submitDraft: true });
+    });
+  });
+
+  describe("a message sent while its dictation is transcribing", () => {
+    const held = {
+      environmentId: "env",
+      threadId: "thread",
+      messageId: "message",
+      draftKey: "owner",
+      sendsAlone: true,
+    };
+
+    it("finds the recording and waits for its words", async () => {
+      const h = harness();
+      await h.finish("draft");
+      expect(h.outbox.pendingDraftItemId("owner")).toBe("voice-1");
+      await h.outbox.holdThreadMessage("voice-1", held, "owner", "typed", async () => {});
+      expect(h.outbox.pendingDraftItemId("owner")).toBe(null);
+      h.jobs.set("voice-1", h.done("hallo"));
+      await h.outbox.poll();
+      expect(h.heldMessages.release).toHaveBeenCalledWith(held, "typed\n\nhallo");
+      expect(h.appendDraft).not.toHaveBeenCalled();
+    });
+
+    it("has nothing to wait for once the words arrived", async () => {
+      const h = harness();
+      await h.finish("draft");
+      h.jobs.set("voice-1", h.done("hallo"));
+      await h.outbox.poll();
+      expect(h.outbox.pendingDraftItemId("owner")).toBe(null);
+    });
+
+    it("sends a recording with attachments through the draft, not the service", async () => {
+      const h = harness();
+      const handoff = h.outbox.createHandoff({
+        ownerKey: "owner",
+        threadId: "thread",
+        sendsThroughDraft: () => true,
+        readDraftText: () => "typed",
+        clearDraftText: () => {
+          throw new Error("the composer sends the draft");
+        },
+      });
+      handoff.recordingStarted("file:///cache/a.aac");
+      handoff.recordingFinished("file:///cache/a.aac", "send");
+      await h.outbox.poll();
+      expect(h.stored.get("voice-1")).toMatchObject({ mode: "draft", submitDraft: true });
+      expect(h.startThread).toHaveBeenCalledWith("owner", "voice-1", "gehoert");
     });
   });
 

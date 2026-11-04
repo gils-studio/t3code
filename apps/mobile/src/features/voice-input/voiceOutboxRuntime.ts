@@ -166,9 +166,9 @@ export function useVoiceThreadStart(
 
 /** False when the transcript won the race: the draft then sends itself as usual. */
 export function holdVoiceThreadMessage(
-  voice: VoiceThreadStart,
+  voiceId: string,
   draftKey: string,
-  prefixText: string,
+  typedText: string,
   message: QueuedThreadMessage,
 ): Promise<boolean> {
   const held = {
@@ -176,14 +176,33 @@ export function holdVoiceThreadMessage(
     threadId: String(message.threadId),
     messageId: String(message.messageId),
     draftKey,
+    sendsAlone: typedText.length > 0 || message.attachments.length > 0,
   };
   return voiceOutbox.holdThreadMessage(
-    voice.id,
+    voiceId,
     held,
     scopedThreadKey(message.environmentId, message.threadId),
-    prefixText,
+    typedText,
     () => enqueueThreadOutboxMessage(message),
   );
+}
+
+export const hasPendingVoice = (draftKey: string) =>
+  voiceOutbox.pendingDraftItemId(draftKey) !== null;
+
+/** A message sent while its dictation is still transcribing waits for those words. */
+export async function enqueueWithPendingVoice(
+  draftKey: string,
+  message: QueuedThreadMessage,
+): Promise<void> {
+  const voiceId = voiceOutbox.pendingDraftItemId(draftKey);
+  if (voiceId === null) return enqueueThreadOutboxMessage(message);
+  const text = [message.text, VOICE_PLACEHOLDER].filter(Boolean).join("\n\n");
+  const held = { ...message, text, awaitingVoiceId: voiceId };
+  if (await holdVoiceThreadMessage(voiceId, draftKey, message.text, held)) return;
+  // The transcript just landed in the draft, next to what the message was built from.
+  const draftText = getComposerDraftSnapshot(draftKey).text.trim();
+  return enqueueThreadOutboxMessage({ ...message, text: draftText });
 }
 
 export async function pairVoiceServer(link: string): Promise<void> {

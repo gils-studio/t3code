@@ -117,7 +117,7 @@ import {
 } from "../voice-input/ComposerDictationControl";
 import { useVoiceInputController } from "../voice-input/useVoiceInputController";
 import { resolveVoiceComposerPresentation } from "../voice-input/voiceInputPresentation";
-import { useVoiceDraftSubmit } from "../voice-input/voiceOutboxRuntime";
+import { useVoiceDraftSubmit, useVoiceThreadStart } from "../voice-input/voiceOutboxRuntime";
 import type { ExistingThreadSettingsRouteParams } from "./ThreadSettingsSheet";
 import {
   useThreadSettingsSheetPresentation,
@@ -574,7 +574,8 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     serverTarget: {
       environmentId: props.environmentId,
       threadId: props.isDraft ? null : props.selectedThread.id,
-      canSendText: draftAttachments.length === 0 && queuedEdit === null,
+      canSendText: queuedEdit === null,
+      sendsThroughDraft: () => getComposerDraftSnapshot(composerDraftKey).attachments.length > 0,
       clearDraftText: () => setComposerDraftText(composerDraftKey, ""),
     },
     onChangeDraftMessage: (text) => setComposerDraftText(composerDraftKey, text),
@@ -715,6 +716,10 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
 
   const [voiceDraftSubmits, setVoiceDraftSubmits] = useState(0);
   useVoiceDraftSubmit(composerDraftKey, () => setVoiceDraftSubmits((count) => count + 1));
+  // A new chat answers this itself; here the attachments leave now and wait for their words.
+  useVoiceThreadStart(props.isDraft ? null : composerDraftKey, () =>
+    setVoiceDraftSubmits((count) => count + 1),
+  );
   const sendVoiceDraft = useEffectEvent(() => void handleSend());
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- handleSend must run after the render that sees the transcript in the draft
   useEffect(() => {

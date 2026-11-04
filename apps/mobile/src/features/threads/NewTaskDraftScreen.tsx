@@ -74,8 +74,8 @@ import {
   isModelSelectionUnavailable,
   resolveSelectableModelSelection,
 } from "../../lib/modelOptions";
-import { enqueueThreadOutboxMessage } from "../../state/thread-outbox";
 import {
+  enqueueWithPendingVoice,
   holdVoiceThreadMessage,
   useVoiceThreadStart,
   type VoiceThreadStart,
@@ -666,8 +666,8 @@ export function NewTaskDraftScreen(props: {
     // Persist locally before clearing or leaving the draft; server setup runs on the thread.
     flow.setSubmitting(true);
     const queued = await settlePromise(async () => {
-      if (voice) return holdVoiceThreadMessage(voice, draftKey, draft.text.trim(), message);
-      await enqueueThreadOutboxMessage(message);
+      if (voice) return holdVoiceThreadMessage(voice.id, draftKey, draft.text.trim(), message);
+      await enqueueWithPendingVoice(draftKey, message);
       return true;
     });
     flow.setSubmitting(false);

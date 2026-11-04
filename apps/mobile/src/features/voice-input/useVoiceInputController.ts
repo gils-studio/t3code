@@ -19,6 +19,7 @@ export type VoiceServerTarget = {
   readonly threadId: string | null;
   /** False when the draft holds what a plain text message cannot carry, such as attachments. */
   readonly canSendText: boolean;
+  readonly sendsThroughDraft: () => boolean;
   readonly clearDraftText: () => void;
 };
 
@@ -68,6 +69,7 @@ export function useVoiceInputController(input: {
             // Only the service's own environment can receive a message from it.
             threadId:
               server.environmentId === serverTarget.environmentId ? serverTarget.threadId : null,
+            sendsThroughDraft: serverTarget.sendsThroughDraft,
             readDraftText: () => captured.readDraftMessage() ?? "",
             clearDraftText: serverTarget.clearDraftText,
           })

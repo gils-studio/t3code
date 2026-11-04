@@ -103,7 +103,10 @@ import {
   useSelectedThreadVisibleTurnItems,
 } from "../state/use-thread-detail";
 import { useThreadSelection } from "../state/use-thread-selection";
-import { enqueueThreadOutboxMessage } from "./thread-outbox";
+import {
+  enqueueWithPendingVoice,
+  hasPendingVoice,
+} from "../features/voice-input/voiceOutboxRuntime";
 import { dispatchingQueuedMessageIdAtom, useThreadOutboxMessages } from "./use-thread-outbox";
 import { threadEnvironment } from "./threads";
 import { useAtomCommand } from "./use-atom-command";
@@ -664,7 +667,8 @@ export function useThreadComposerState() {
     const messageId = MessageId.make(metadata.messageId);
     onWillEnqueue?.();
     clearThreadComposerError(threadKey);
-    const enqueuePromise = enqueueThreadOutboxMessage({
+    const waitsForVoice = hasPendingVoice(threadKey);
+    const enqueuePromise = enqueueWithPendingVoice(threadKey, {
       environmentId: selectedThreadShell.environmentId,
       threadId: selectedThreadShell.id,
       messageId,
@@ -681,6 +685,8 @@ export function useThreadComposerState() {
       ...(followUpDispatchMode === null ? {} : { dispatchMode: followUpDispatchMode }),
       createdAt: metadata.createdAt,
     });
+    // A transcript landing right now must be read from the draft before it is cleared.
+    if (waitsForVoice) await enqueuePromise.catch(() => {});
     clearComposerDraftContent(threadKey, { deferAttachmentCleanup: true });
     enqueuePromise.then(
       () => scheduleUnusedComposerAttachmentCleanup(attachments),
