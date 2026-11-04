@@ -170,6 +170,30 @@ describe("resolveUserMessagePresentation", () => {
     }
   });
 
+  it("shows a dictated message as the user's, unless an agent in a thread sent it", () => {
+    const text = "[Voice message]\n\nBitte die Tests ergaenzen";
+    const voice = {
+      text: "Bitte die Tests ergaenzen",
+      attribution: null,
+      scheduledTaskId: undefined,
+      voice: true,
+    };
+    expect(resolveUserMessagePresentation({ role: "user", createdBy: "agent", text })).toEqual(
+      voice,
+    );
+    expect(resolveUserMessagePresentation({ role: "user", createdBy: "user", text })).toEqual(
+      voice,
+    );
+    expect(
+      resolveUserMessagePresentation({
+        role: "user",
+        createdBy: "agent",
+        senderThreadId: "thread",
+        text,
+      }),
+    ).toEqual({ text, attribution: "agent", scheduledTaskId: undefined });
+  });
+
   it("hides the prompt that stands in for an attachment-only message", () => {
     for (const text of [
       ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,

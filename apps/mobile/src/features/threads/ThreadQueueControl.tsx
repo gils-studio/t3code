@@ -5,7 +5,10 @@ import {
   queuedRunEditBlockedReason,
 } from "@t3tools/client-runtime/queued-run-edit";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { resolveUserMessagePresentation } from "@t3tools/client-runtime/user-message";
+import {
+  resolveUserMessagePresentation,
+  stripVoiceMessagePrefix,
+} from "@t3tools/client-runtime/user-message";
 import type { ChatAttachment, EnvironmentId, RunId, ThreadId } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 import { Image } from "expo-image";
@@ -188,7 +191,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
         {
           runId,
           messageId: entry.messageId,
-          originalText: entry.text,
+          originalText: stripVoiceMessagePrefix(entry.text),
           existingAttachments: entry.attachments,
           ...(entry.context ? { context: entry.context } : {}),
         },
@@ -268,7 +271,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
           editBlocked: editBlockedReason !== null,
           isEditing: editing?.runId === run.id,
           isGuestMessage: context?.guest !== undefined,
-          text,
+          text: stripVoiceMessagePrefix(text),
         });
         const title =
           controls.displayText || (attachments.length > 0 ? "Attachments" : "Queued message");
