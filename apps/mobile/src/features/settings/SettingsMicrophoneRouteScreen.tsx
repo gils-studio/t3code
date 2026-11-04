@@ -24,10 +24,12 @@ import { ListActionRow as SettingsActionRow } from "../../components/ui/ListActi
 import { SettingsDragHandle } from "./components/SettingsDragHandle";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
+import { VoiceServerSection } from "./components/VoiceServerSection";
 import {
   deviceMicrophoneOrder,
   localVoiceTranscriberAtom,
 } from "../voice-input/VoiceInputProvider";
+import { useVoiceServer } from "../voice-input/voiceOutboxRuntime";
 
 type MicrophonePermission = "checking" | "granted" | "ask" | "denied";
 
@@ -102,9 +104,14 @@ const UNAVAILABLE_EXPLANATION =
 
 export function SettingsMicrophoneRouteScreen() {
   const transcriber = useAtomValue(localVoiceTranscriberAtom);
+  const server = useVoiceServer();
   // Android's probe is asynchronous; an empty sheet avoids flashing "unavailable" first.
   if (transcriber === "checking") return <SettingsScreen title="Microphone">{null}</SettingsScreen>;
-  return transcriber === null ? <VoiceInputUnavailable /> : <MicrophoneSettings />;
+  return transcriber === null && server === null ? (
+    <VoiceInputUnavailable />
+  ) : (
+    <MicrophoneSettings />
+  );
 }
 
 function VoiceInputUnavailable() {
@@ -122,6 +129,7 @@ function VoiceInputUnavailable() {
           <ListRowLayout icon="mic" label="Not available on this device" />
         </SettingsSection>
         <Text className="px-2 text-sm text-foreground-muted">{UNAVAILABLE_EXPLANATION}</Text>
+        <VoiceServerSection />
       </ScrollView>
     </SettingsScreen>
   );
@@ -201,6 +209,7 @@ function MicrophoneSettings() {
             </Text>
           </>
         ) : null}
+        <VoiceServerSection />
         <SettingsSection title="Preferred order">
           {entries.map((entry, index) => {
             const key = microphoneEntryKey(entry);

@@ -10,6 +10,12 @@ import {
 } from "./appLinking";
 
 describe("shouldHandleAppLink", () => {
+  it("leaves voice server pairing to the outbox", () => {
+    expect(
+      shouldHandleAppLink("t3code-preview://voice-pair?url=https%3A%2F%2Fa&token=b", false),
+    ).toBe(false);
+  });
+
   it.each(["t3code://", "t3code:///", "t3code-dev://", "t3code-preview://"])(
     "ignores scheme-only URL %s",
     (url) => {

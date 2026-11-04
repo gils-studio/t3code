@@ -112,6 +112,7 @@ import {
   ComposerDictationStartAction,
   ComposerDictationStatus,
   ComposerDictationToolbar,
+  ComposerVoiceOutbox,
 } from "../voice-input/ComposerDictationControl";
 import { useVoiceInputController } from "../voice-input/useVoiceInputController";
 import { resolveVoiceComposerPresentation } from "../voice-input/voiceInputPresentation";
@@ -568,6 +569,12 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     readDraftMessage: () => getComposerDraftSnapshot(composerDraftKey).text,
     subscribeToDraftChanges: (onChange) => appAtomRegistry.subscribe(composerDraftsAtom, onChange),
     selection: composerMenu.selection,
+    serverTarget: {
+      environmentId: props.environmentId,
+      threadId: props.isDraft ? null : props.selectedThread.id,
+      canSendText: draftAttachments.length === 0 && queuedEdit === null,
+      clearDraftText: () => setComposerDraftText(composerDraftKey, ""),
+    },
     onChangeDraftMessage: (text) => setComposerDraftText(composerDraftKey, text),
     onChangeSelection: composerMenu.onSelectionChange,
   });
@@ -886,6 +893,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
             error={voiceInput.state.phase === "error" ? voiceInput.state.error : null}
             onDismiss={voiceInput.cancel}
           />
+          <ComposerVoiceOutbox ownerKey={composerDraftKey} />
           {isExpanded ? editingAttachments : null}
           <View
             onLayout={(event) => {
@@ -1161,8 +1169,9 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                     onStart={voiceInput.start}
                     onConfirm={voiceInput.stop}
                     onCancel={voiceInput.cancel}
+                    onSend={voiceInput.canSend ? voiceInput.send : undefined}
                   />
-                  {showStopAction ? (
+                  {showStopAction && (voicePresentation.showsSend || !voiceInput.canSend) ? (
                     <ComposerActionButton
                       size={usesLargeControls ? "large" : "regular"}
                       accessibilityLabel="Stop agent"

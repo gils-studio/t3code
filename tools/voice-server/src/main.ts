@@ -1,0 +1,100 @@
+import * as NodeChildProcess from "node:child_process";
+import * as NodeCrypto from "node:crypto";
+import * as NodeFSP from "node:fs/promises";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
+import { T3CliSender, WhisperTranscriber } from "./adapters.ts";
+import { dataDirectory, readConfig, readTokenHashes, writeConfig, type Config } from "./config.ts";
+import { createHttpServer } from "./httpServer.ts";
+import { JobStore } from "./jobStore.ts";
+import { Worker } from "./worker.ts";
+
+const log = (message: string) => console.log(`${new Date().toISOString()} ${message}`);
+
+/** Prints a deep link once; only the token's hash is kept. */
+async function pair(): Promise<void> {
+  const config = await readConfig();
+  const token = NodeCrypto.randomBytes(32).toString("base64url");
+  const hash = NodeCrypto.createHash("sha256").update(token).digest("hex");
+  await writeConfig({ ...config, tokenHashes: [...config.tokenHashes, hash] });
+  const query = new URLSearchParams({ url: config.publicUrl, token });
+  console.log(`t3code-preview://voice-pair?${query.toString()}`);
+}
+
+/**
+ * A hard-killed service leaves its ssh behind, and sish gives a new connection
+ * a random name while the old one holds the subdomain.
+ */
+async function closeLeftoverTunnel(pidFile: string): Promise<void> {
+  const pid = Number(await NodeFSP.readFile(pidFile, "utf8").catch(() => ""));
+  if (!pid) return;
+  const processes = NodeChildProcess.execFileSync("tasklist", ["/FI", `PID eq ${pid}`], {
+    encoding: "utf8",
+  });
+  if (processes.toLowerCase().includes("ssh.exe")) process.kill(pid);
+}
+
+/** The phone reaches the service through the sish tunnel; ssh is restarted when it drops. */
+async function keepTunnelOpen(config: Config, isStopped: () => boolean): Promise<void> {
+  if (!config.tunnelName) return;
+  const pidFile = NodePath.join(dataDirectory(), "tunnel.pid");
+  await closeLeftoverTunnel(pidFile);
+  const open = () => {
+    if (isStopped()) return;
+    const child = NodeChildProcess.spawn(
+      "ssh",
+      ["devtunnel", "-N", "-R", `${config.tunnelName}:80:127.0.0.1:${config.port}`],
+      { stdio: "ignore", windowsHide: true },
+    );
+    if (child.pid) void NodeFSP.writeFile(pidFile, String(child.pid));
+    child.on("error", (error) => log(`tunnel error: ${String(error)}`));
+    child.on("close", () => {
+      log("tunnel closed, reconnecting");
+      setTimeout(open, 5_000);
+    });
+  };
+  open();
+}
+
+async function serve(): Promise<void> {
+  const config = await readConfig();
+  const environmentId = (
+    await NodeFSP.readFile(
+      NodePath.join(NodeOS.homedir(), ".t3", "userdata", "environment-id"),
+      "utf8",
+    )
+  ).trim();
+  const store = new JobStore(NodePath.join(dataDirectory(), "jobs"));
+  await store.load();
+  const worker = new Worker({
+    store,
+    transcriber: new WhisperTranscriber(config, store),
+    sender: new T3CliSender(config),
+    log,
+  });
+  await worker.recover();
+  worker.start();
+
+  const server = createHttpServer({
+    store,
+    tokenHashes: readTokenHashes,
+    environmentId,
+    onJobCreated: () => worker.notify(),
+  });
+  server.requestTimeout = 0;
+  server.listen(config.port, "127.0.0.1", () => log(`listening on 127.0.0.1:${config.port}`));
+
+  let stopped = false;
+  void keepTunnelOpen(config, () => stopped);
+  const shutdown = () => {
+    stopped = true;
+    server.close();
+    void worker.stop().then(() => process.exit(0));
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+}
+
+if (process.argv[2] === "pair") await pair();
+else await serve();
