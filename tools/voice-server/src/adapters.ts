@@ -123,7 +123,7 @@ export class T3CliSender implements ThreadSender {
 
   async hasMessage(threadId: string, text: string): Promise<boolean> {
     this.assertThreadId(threadId);
-    const { stdout } = await run(this.config.t3Command, ["thread", "show", threadId, "--json"], {
+    const { stdout } = await run(this.config.t3Command, ["thread", "show", threadId, "--json", "--messages", "50"], {
       timeoutMillis: 60_000,
       shell: true,
     });
