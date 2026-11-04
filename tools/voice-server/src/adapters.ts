@@ -101,6 +101,10 @@ const singleLine = (text: string) =>
     .trim();
 
 /** Prefers the warm server; the per-job CLI stays as the path that needs nothing running. */
+/** Timers reject a fractional delay, and audio length rarely is a whole number. */
+export const transcriptionTimeoutMillis = (audioSeconds: number) =>
+  Math.max(120_000, Math.ceil(audioSeconds * 3_000));
+
 export class WhisperTranscriber implements Transcriber {
   private readonly config: Config;
   private readonly store: JobStore;
@@ -153,7 +157,7 @@ export class WhisperTranscriber implements Transcriber {
       const { size } = await NodeFSP.stat(wav);
       const audioSeconds = size / 32_000;
       // Generous: a slow run is fine, only a hung process must not block the queue forever.
-      const timeoutMillis = Math.max(120_000, audioSeconds * 3_000);
+      const timeoutMillis = transcriptionTimeoutMillis(audioSeconds);
       const startedAt = Date.now();
       const [silent, text] = await Promise.all([
         isSilent(this.config, wav),
