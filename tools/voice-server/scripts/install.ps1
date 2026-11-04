@@ -8,8 +8,7 @@ param(
   [string] $T3Command = "t3",
   [int] $Port = 4791,
   [string] $TunnelName = "t3-voice",
-  [string] $PublicUrl = "https://t3-voice.dev.gweiermann.de",
-  [string] $Prompt = ""
+  [string] $PublicUrl = "https://t3-voice.dev.gweiermann.de"
 )
 $ErrorActionPreference = "Stop"
 
@@ -39,15 +38,19 @@ if (-not (Test-Path $configPath)) {
     tunnelName  = $TunnelName
     whisperCli  = Join-Path $WhisperDirectory "whisper-cli.exe"
     whisperCwd  = $WhisperDirectory
-    whisperArgs = @("-mc", "0", "-bs", "5")
+    whisperArgs = @("-bs", "5")
     model       = $Model
     vadModel    = $VadModel
     ffmpeg      = $Ffmpeg
     t3Command   = $T3Command
-    prompt      = $Prompt
   }
   # .NET writes without the BOM that Set-Content adds, which JSON.parse rejects.
   [IO.File]::WriteAllText($configPath, ($config | ConvertTo-Json))
+}
+
+$vocabularyPath = Join-Path $home_ "vocabulary.json"
+if (-not (Test-Path $vocabularyPath)) {
+  Copy-Item (Join-Path $PSScriptRoot "..ocabulary.example.json") $vocabularyPath
 }
 
 $node = (Get-Command node).Source

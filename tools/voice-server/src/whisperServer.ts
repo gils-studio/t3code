@@ -4,6 +4,7 @@ import * as NodePath from "node:path";
 import * as NodeTimersPromises from "node:timers/promises";
 
 import type { Config } from "./config.ts";
+import { readVocabulary } from "./vocabulary.ts";
 
 export type SpeechSegment = {
   readonly start: number;
@@ -92,7 +93,8 @@ export class WhisperServer {
       }
       form.set("response_format", "verbose_json");
       form.set("language", language);
-      if (this.config.prompt) form.set("prompt", this.config.prompt);
+      const { prompt } = readVocabulary();
+      if (prompt) form.set("prompt", prompt);
       const response = await fetch(`${this.baseUrl}/inference`, {
         method: "POST",
         body: form,

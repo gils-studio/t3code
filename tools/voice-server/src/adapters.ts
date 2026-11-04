@@ -4,6 +4,7 @@ import * as NodePath from "node:path";
 
 import type { Config } from "./config.ts";
 import type { Job, JobStore } from "./jobStore.ts";
+import { correctTranscript, readVocabulary } from "./vocabulary.ts";
 import type { WhisperServer } from "./whisperServer.ts";
 import type { ThreadSender, Transcriber } from "./worker.ts";
 
@@ -125,6 +126,7 @@ export class WhisperTranscriber implements Transcriber {
 
   private async runCli(job: Job, wav: string, timeoutMillis: number): Promise<string> {
     const outputBase = this.store.workPath(job.id, "transcript");
+    const { prompt } = readVocabulary();
     try {
       await run(
         this.config.whisperCli,
@@ -140,7 +142,7 @@ export class WhisperTranscriber implements Transcriber {
           "-of",
           outputBase,
           ...this.config.whisperArgs,
-          ...(this.config.prompt ? ["--prompt", this.config.prompt] : []),
+          ...(prompt ? ["--prompt", prompt] : []),
         ],
         { timeoutMillis, cwd: this.config.whisperCwd },
       );
@@ -172,7 +174,7 @@ export class WhisperTranscriber implements Transcriber {
       this.log(
         `transcribed ${Math.round(audioSeconds)} s of audio in ${Date.now() - startedAt} ms`,
       );
-      return silent ? "" : singleLine(text);
+      return silent ? "" : correctTranscript(singleLine(text));
     } finally {
       await NodeFSP.rm(wav, { force: true });
     }

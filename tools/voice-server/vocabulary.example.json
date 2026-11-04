@@ -1,0 +1,10 @@
+{
+  "prompt": "Gespräch über unsere Apps Pidohr, dialed, Zugline, Raumwerk, alvenrik, Mise und noche von Gils Studio, dazu Gils ID, Gils Admin und Gils Live. Wir arbeiten mit T3 Code, Claude, Cloudflare Worker, Worktree, Fleet, Whisper, Pull Request, Commit und Deploy.",
+  "corrections": {
+    "Pidohr": ["Pidor"],
+    "dialed": ["Dialed"],
+    "Gils": ["Giltz", "Gilds", "Gilts"],
+    "Worktree": ["Workty", "Worktee", "Work-Tree", "WorkD", "Work-D", "Work-Car"],
+    "Cloudflare": ["Cloud-DF-Lare", "Claudieflare", "Claudie Flare"]
+  }
+}

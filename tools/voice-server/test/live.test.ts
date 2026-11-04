@@ -28,6 +28,7 @@ async function harness(answers: ReadonlyArray<ReadonlyArray<SpeechSegment>>) {
     isSilent: async () => state.silent,
     recognize: async () => ({ segments: answers[state.recognized++] ?? [] }),
     isBusy: () => state.busy,
+    correct: (text) => text.replace("Pidor", "Pidohr"),
     now: () => state.now,
   });
   await live.reset();
@@ -59,6 +60,15 @@ NodeTest.test("a long talk settles old words and only decodes the recent window"
   NodeAssert.equal(await speak(), "Hallo Welt und weiter");
   NodeAssert.equal(await speak(), "Hallo Welt und weiter so");
   NodeAssert.deepEqual(state.starts, [0, 0, 9]);
+});
+
+NodeTest.test("a name split across a settled window is still corrected", async () => {
+  const { state, speak } = await harness([
+    [segment(0, 9, " Die App"), segment(9, 14, " Pi"), segment(14, 17, "dor")],
+    [segment(0, 3, "dor")],
+  ]);
+  state.wavBytes = 20 * 32_000;
+  NodeAssert.equal(await speak(), "Die App Pidohr");
 });
 
 NodeTest.test("noise markers and silence never reach the preview", async () => {
@@ -101,6 +111,7 @@ NodeTest.test("a failed update leaves the preview running", async () => {
     isSilent: async () => false,
     recognize: async () => ({ segments: [segment(0, 1, " wieder da")] }),
     isBusy: () => false,
+    correct: (text) => text,
   });
   await live.append("voice-1", 0, Buffer.from("a"), "de");
   await live.pump();

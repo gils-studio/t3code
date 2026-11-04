@@ -9,6 +9,7 @@ import { dataDirectory, readConfig, readTokenHashes, writeConfig, type Config } 
 import { createHttpServer } from "./httpServer.ts";
 import { JobStore } from "./jobStore.ts";
 import { LiveTranscriber } from "./live.ts";
+import { correctTranscript } from "./vocabulary.ts";
 import { closeLeftoverProcess, WhisperServer } from "./whisperServer.ts";
 import { Worker } from "./worker.ts";
 
@@ -84,6 +85,7 @@ async function serve(): Promise<void> {
       }),
     isBusy: () =>
       store.all().some((job) => job.status === "queued" || job.status === "transcribing"),
+    correct: correctTranscript,
     log,
   });
   await live.reset();

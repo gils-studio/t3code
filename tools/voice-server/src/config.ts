@@ -21,8 +21,6 @@ export type Config = {
   readonly model: string;
   readonly ffmpeg: string;
   readonly t3Command: string;
-  /** Vocabulary hint for whisper, for product and tooling names. */
-  readonly prompt: string;
 };
 
 export const dataDirectory = (): string =>
