@@ -52,6 +52,7 @@ import { environmentThreadShells } from "./state/threads";
 import { environmentShell } from "./state/shell";
 import { OverlayPortalHost } from "./components/ui/OverlayPortal";
 import { shouldHandleAppLink, restoreDraftLinkState } from "./lib/appLinking";
+import { installLateActivityUnsettle } from "./features/threads/lateActivityUnsettle";
 import { startVoiceOutbox } from "./features/voice-input/voiceOutboxRuntime";
 import { hasCloudPublicConfig } from "./features/cloud/publicConfig";
 import { takeScheduledTaskNewLink } from "./features/settings/scheduled-task-editor-state";
@@ -193,6 +194,7 @@ const appServiceDisposers = [
   installSubscriptionUsageRefresh(),
   installPermissionUpdateNotice(),
   installThreadOutboxDelivery(),
+  installLateActivityUnsettle(),
   installComposerAttachmentUploads(),
   startIncomingShareInbox(),
   installAgentNotificationNavigation(linkToAppPath),
