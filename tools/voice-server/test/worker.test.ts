@@ -4,9 +4,8 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeTest from "node:test";
 
-import { foundNoSpeech, transcriptionTimeoutMillis } from "../src/adapters.ts";
+import { foundNoSpeech, transcriptionTimeoutMillis, voiceMessagePrefix } from "../src/adapters.ts";
 import { JobStore, type JobMeta } from "../src/jobStore.ts";
-import { voiceMessagePrefix } from "../src/adapters.ts";
 import { composeMessage, Worker, type ThreadSender, type Transcriber } from "../src/worker.ts";
 
 const meta = (overrides: Partial<JobMeta> = {}): JobMeta => ({
@@ -57,7 +56,7 @@ NodeTest.test("the message carries the speaker of the recording", async () => {
   );
   const partial = await store.partialAudioPath("job-speaker");
   await NodeFSP.writeFile(partial, "audio");
-  await store.create("job-speaker", jobMeta, partial, 1, "Nils");
+  await store.create("job-speaker", meta(), partial, 1, "Nils");
   await worker.runNext();
   NodeAssert.deepEqual(speakers, ["Nils"]);
   NodeAssert.equal(voiceMessagePrefix("Nils"), "[Voice message from Nils]\n\n");
