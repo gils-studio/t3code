@@ -1060,6 +1060,39 @@ export function messageFoldRunId(
   return null;
 }
 
+const ITEM_TYPES_BETWEEN_REPLIES: ReadonlySet<string> = new Set([
+  "reasoning",
+  "compaction",
+  "notification",
+  "system_notice",
+]);
+
+/**
+ * Assistant messages the agent ended a turn with, other than the run's last one. A background
+ * task can wake the agent inside the same run, and its short follow-up then comes last; the
+ * reply before it, with no work in between, is the report and must stay visible.
+ */
+export function turnEndingAssistantMessageIds(
+  feed: ReadonlyArray<ThreadFeedEntry>,
+): ReadonlySet<string> {
+  const ids = new Set<string>();
+  let previousReply: { readonly runId: RunId; readonly id: string } | null = null;
+  for (const entry of feed) {
+    if (entry.type === "activity-group") {
+      const isWork = entry.activities.some(
+        (activity) => !ITEM_TYPES_BETWEEN_REPLIES.has(activity.projectedItem.item.type),
+      );
+      if (isWork) previousReply = null;
+      continue;
+    }
+    if (entry.type !== "message" || entry.message.role !== "assistant") continue;
+    const { runId } = entry.message;
+    if (previousReply !== null && previousReply.runId === runId) ids.add(previousReply.id);
+    previousReply = runId == null ? null : { runId, id: entry.id };
+  }
+  return ids;
+}
+
 function deriveThreadFeedRunFolds(
   feed: ReadonlyArray<ThreadFeedEntry>,
   latestRun: ThreadFeedLatestRun | null,
@@ -1136,6 +1169,7 @@ function deriveThreadFeedRunFolds(
   }
 
   const activeRunId = unsettledRunId(latestRun);
+  const turnEndingIds = turnEndingAssistantMessageIds(feed);
   const foldsByAnchorId = new Map<string, ThreadFeedRunFold>();
   for (const [runId, group] of groupsByRunId) {
     if (
@@ -1153,6 +1187,7 @@ function deriveThreadFeedRunFolds(
         .filter(
           (entry) =>
             entry.id !== terminalAssistantId &&
+            !turnEndingIds.has(entry.id) &&
             entry.type !== "html-render" &&
             entry.type !== "mcp-app" &&
             !(entry.type === "activity-group" && isContextCompactionActivityGroup(entry)) &&

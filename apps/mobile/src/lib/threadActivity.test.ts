@@ -907,8 +907,7 @@ describe("buildThreadFeed", () => {
     ]);
   });
 
-  // regression: #21393 show plans and fold settled progress notes
-  it("folds progress even when a response has no tool calls", () => {
+  it("keeps a finished report visible when a background follow-up comes last", () => {
     const feed = buildThreadFeed([
       projected(userMessage(), 0),
       projected(
@@ -926,7 +925,7 @@ describe("buildThreadFeed", () => {
     const presented = deriveThreadFeedPresentation(feed, null, new Set());
     expect(presented.map((entry) => entry.id)).toEqual([
       "message-user",
-      "run-fold:run-1",
+      "message-opening",
       "message-assistant",
     ]);
   });

@@ -1004,6 +1004,67 @@ describe("deriveMessagesTimelineRows", () => {
     ).toBeDefined();
   });
 
+  it("keeps a finished report visible when a background follow-up comes last", () => {
+    const assistant = (id: string, at: string, text: string) => ({
+      id: `${id}-entry`,
+      kind: "message" as const,
+      createdAt: at,
+      message: {
+        id: id as never,
+        role: "assistant" as const,
+        text,
+        runId: "turn-1" as never,
+        createdAt: at,
+        updatedAt: at,
+        streaming: false,
+      },
+    });
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "user-entry",
+          kind: "message" as const,
+          createdAt: "2026-01-01T00:00:00Z",
+          message: {
+            id: "user-1" as never,
+            role: "user" as const,
+            text: "Ship it",
+            runId: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+            streaming: false,
+          },
+        },
+        assistant("progress", "2026-01-01T00:00:05Z", "Checking the build."),
+        {
+          id: "work-entry-1",
+          kind: "work" as const,
+          createdAt: "2026-01-01T00:00:08Z",
+          entry: {
+            id: "work-1",
+            createdAt: "2026-01-01T00:00:08Z",
+            runId: "turn-1" as never,
+            label: "Ran command",
+            tone: "tool" as const,
+          },
+        },
+        assistant("report", "2026-01-01T00:00:20Z", "It is live, here is what changed."),
+        assistant("follow-up", "2026-01-01T00:05:00Z", "The deploy reported above succeeded."),
+      ],
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaries: [],
+      supportsConversationRollback: false,
+    });
+
+    expect(rows.map((row) => row.id)).toEqual([
+      "user-entry",
+      "turn-fold:turn-1",
+      "report-entry",
+      "follow-up-entry",
+    ]);
+  });
+
   it.each([1, 2, 3])("folds %i completed activities after the terminal response", (count) => {
     const runId = RunId.make("turn-1");
     const timelineEntries = [
