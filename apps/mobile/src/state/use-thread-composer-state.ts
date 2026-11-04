@@ -752,6 +752,7 @@ export function useThreadComposerState() {
     selectedThreadActivityRun,
     selectedThreadQueueCount,
     selectedThreadQueuedMessages,
+    selectedThreadAgentBusy: (queueWorkflow?.activeRun ?? null) !== null,
     dispatchingQueuedMessageId,
     activeWorkStartedAt,
     runlessWorkActive,

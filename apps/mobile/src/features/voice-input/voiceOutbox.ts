@@ -5,6 +5,8 @@ import type {
 
 export const VOICE_SERVER_RECORDING_LIMIT_SECONDS = 30 * 60;
 const POLL_INTERVAL_MS = 1_000;
+/** Long enough for a held message to leave after the app was put away, short enough for offline. */
+const BACKGROUND_POLL_LIMIT_MS = 2 * 60_000;
 
 export type VoiceJob = {
   readonly status: "queued" | "transcribing" | "sending" | "done" | "failed";
@@ -37,6 +39,8 @@ export type VoiceOutboxItem = {
   readonly submitDraft: boolean;
   readonly heldMessage?: VoiceHeldMessage;
   readonly prefixText: string;
+  /** The live words at the end of the recording, shown until the transcript replaces them. */
+  readonly previewText?: string;
   readonly language: string;
   /** Set until the audio has moved into outbox storage. */
   readonly sourceUri: string | null;
@@ -102,7 +106,7 @@ export type VoiceHandoffTarget = {
 const withTranscript = (prefixText: string, transcript: string) =>
   prefixText ? `${prefixText.trimEnd()}\n\n${transcript}` : transcript;
 
-const isInFlight = (item: VoiceOutboxItem) =>
+export const isInFlight = (item: VoiceOutboxItem) =>
   item.phase === "uploading" || item.phase === "processing";
 
 /**
@@ -118,6 +122,7 @@ export class VoiceOutbox {
   private queue: Promise<unknown> = Promise.resolve();
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
   private foreground = false;
+  private backgroundedAt: number | null = null;
 
   constructor(dependencies: VoiceOutboxDependencies) {
     this.dependencies = dependencies;
@@ -154,8 +159,9 @@ export class VoiceOutbox {
 
   setForeground(foreground: boolean): void {
     this.foreground = foreground;
+    this.backgroundedAt = foreground ? null : this.dependencies.now();
     if (foreground) this.resumeUploads();
-    else this.cancelPoll();
+    else if (!this.shouldPoll()) this.cancelPoll();
   }
 
   createHandoff(target: VoiceHandoffTarget): VoiceRecordingHandoff {
@@ -196,7 +202,14 @@ export class VoiceOutbox {
           const item = this.items.get(id!);
           if (!item) return;
           const submitDraft = disposition === "send" && mode === "draft";
-          const finished = { ...item, mode, submitDraft, prefixText, sourceUri: uri };
+          const finished = {
+            ...item,
+            mode,
+            submitDraft,
+            prefixText,
+            sourceUri: uri,
+            ...(previewText ? { previewText } : {}),
+          };
           // The typed text may only leave the draft once it is stored with the recording.
           await this.persist(finished);
           if (mode === "send") target.clearDraftText();
@@ -415,12 +428,22 @@ export class VoiceOutbox {
   }
 
   private schedulePoll(): void {
-    if (!this.foreground || this.pollTimer !== null) return;
-    if (![...this.items.values()].some(isInFlight)) return;
+    if (this.pollTimer !== null || !this.shouldPoll()) return;
     this.pollTimer = setTimeout(() => {
       this.pollTimer = null;
       void this.poll().finally(() => this.schedulePoll());
     }, POLL_INTERVAL_MS);
+  }
+
+  /** Only a held message depends on this app to leave; anything else can wait for its return. */
+  private shouldPoll(): boolean {
+    const inFlight = [...this.items.values()].filter(isInFlight);
+    if (this.foreground) return inFlight.length > 0;
+    return (
+      this.backgroundedAt !== null &&
+      this.dependencies.now() - this.backgroundedAt < BACKGROUND_POLL_LIMIT_MS &&
+      inFlight.some((item) => item.heldMessage)
+    );
   }
 
   private cancelPoll(): void {

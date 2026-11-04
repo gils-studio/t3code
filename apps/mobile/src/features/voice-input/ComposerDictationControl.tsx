@@ -20,8 +20,9 @@ import { cn } from "../../lib/cn";
 import type { VoiceComposerPresentation } from "./voiceInputPresentation";
 import { VOICE_WAVEFORM_SAMPLE_COUNT } from "./voiceInputMetering";
 import { voiceLiveTail } from "./voiceLivePreview";
-import type { VoiceOutboxItem } from "./voiceOutbox";
-import { useVoiceLiveText, useVoiceOutboxItems, voiceOutbox } from "./voiceOutboxRuntime";
+import { VoiceItemStatus } from "./VoiceMessageStatus";
+import { useVoiceLiveText, useVoiceOutboxItems } from "./voiceOutboxRuntime";
+import { isSentVoiceItem } from "./voiceThreadMessages";
 
 const DICTATION_TIMING = {
   duration: 220,
@@ -350,67 +351,19 @@ export function ComposerDictationError(props: {
   );
 }
 
-function outboxItemLabel(item: VoiceOutboxItem): string {
-  if (item.phase === "no-speech") return "No speech found in the recording";
-  if (item.phase === "failed") return item.error ?? "Transcription failed";
-  if (item.phase === "uploading") return "Uploading recording";
-  if (item.remoteStatus === "transcribing") return "Transcribing";
-  if (item.remoteStatus === "sending") return "Sending message";
-  return item.queuePosition ? `Waiting, ${item.queuePosition} ahead` : "Waiting to transcribe";
-}
-
-/** Recordings of this composer that are still on their way; they need no screen to continue. */
+/** Recordings on their way back into this draft; sent ones live in the chat or the queue. */
 export function ComposerVoiceOutbox(props: { readonly ownerKey: string }) {
   const items = useVoiceOutboxItems().filter(
-    (item) => item.ownerKey === props.ownerKey && item.phase !== "recording",
+    (item) =>
+      item.ownerKey === props.ownerKey && item.phase !== "recording" && !isSentVoiceItem(item),
   );
-  return items.map((item) => {
-    const settled = item.phase === "no-speech" || item.phase === "failed";
-    return (
-      <View key={item.id} className="min-w-0 flex-row items-center gap-2 px-4 py-2">
-        {settled ? null : <AppActivityIndicator size="small" colorClassName="accent-icon-muted" />}
-        <Text
-          accessibilityLiveRegion="polite"
-          className={cn(
-            "min-w-0 flex-1 text-sm",
-            item.phase === "failed" ? "text-danger-foreground" : "text-foreground-muted",
-          )}
-          numberOfLines={2}
-        >
-          {outboxItemLabel(item)}
-        </Text>
-        {item.phase === "failed" ? (
-          <Pressable
-            accessibilityRole="button"
-            className="min-h-7 justify-center px-1 active:opacity-70"
-            hitSlop={8}
-            onPress={() => void voiceOutbox.retry(item.id)}
-          >
-            <Text className="text-sm font-medium text-foreground">Retry</Text>
-          </Pressable>
-        ) : null}
-        {settled ? (
-          <Pressable
-            accessibilityLabel="Dismiss recording"
-            accessibilityRole="button"
-            className="size-7 items-center justify-center active:opacity-70"
-            hitSlop={8}
-            onPress={() => void voiceOutbox.dismiss(item.id)}
-          >
-            <SymbolView
-              name="xmark"
-              size={12}
-              tintColorClassName="accent-icon-muted"
-              type="monochrome"
-            />
-          </Pressable>
-        ) : null}
-      </View>
-    );
-  });
+  return items.map((item) => (
+    <View key={item.id} className="min-w-0 px-4 py-2">
+      <VoiceItemStatus item={item} />
+    </View>
+  ));
 }
 
-/** The newest words of the running recording; the final text comes from the whole audio. */
 export function ComposerVoiceLiveText() {
   const text = useVoiceLiveText();
   if (!text) return null;

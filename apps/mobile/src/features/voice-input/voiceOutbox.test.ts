@@ -187,6 +187,26 @@ describe("VoiceOutbox", () => {
       return { ...h, enqueue };
     };
 
+    it("keeps fetching a held transcript after the app was put away, but nothing else", async () => {
+      vi.useFakeTimers();
+      try {
+        const h = await holdIt();
+        h.outbox.setForeground(false);
+        h.client.fetchJob.mockClear();
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(h.client.fetchJob).toHaveBeenCalledWith("voice-1");
+
+        const other = await sendFromNewChat();
+        other.outbox.setForeground(true);
+        other.outbox.setForeground(false);
+        other.client.fetchJob.mockClear();
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(other.client.fetchJob).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("asks the screen to open the chat, with the words heard so far", async () => {
       const h = await sendFromNewChat();
       expect(h.startThread).toHaveBeenCalledWith("new-chat", "voice-1", "gehoert");

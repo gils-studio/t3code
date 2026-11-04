@@ -76,6 +76,7 @@ export function FloatingWorkingControl(props: {
   readonly agents: SubagentPillSegment | null;
   readonly onOpenAgents: () => void;
   readonly queuedCount: number;
+  readonly queueTranscribing: boolean;
   readonly onOpenQueue: () => void;
   readonly lift?: SharedValue<number>;
 }) {
@@ -258,7 +259,11 @@ export function FloatingWorkingControl(props: {
           {hasStatus || hasPreview || hasAgents ? (
             <View className="absolute left-0 h-4 w-px bg-border" />
           ) : null}
-          <SymbolView name="list.number" size={13} tintColorClassName="accent-foreground-muted" />
+          {props.queueTranscribing ? (
+            <AppActivityIndicator size="small" colorClassName="accent-icon-muted" />
+          ) : (
+            <SymbolView name="list.number" size={13} tintColorClassName="accent-foreground-muted" />
+          )}
           <Text className="shrink font-t3-medium text-xs tabular-nums" numberOfLines={1}>
             {props.queuedCount} queued
           </Text>
