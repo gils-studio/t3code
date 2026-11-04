@@ -72,6 +72,13 @@ NodeTest.test("noise markers and silence never reach the preview", async () => {
   NodeAssert.equal(state.starts.at(-1), 20);
 });
 
+NodeTest.test("a pass that hears nothing keeps the words already on screen", async () => {
+  const { speak } = await harness([[segment(0, 2, " Hallo")], [], [segment(0, 2, " * Musik *")]]);
+  NodeAssert.equal(await speak(), "Hallo");
+  NodeAssert.equal(await speak(), "Hallo");
+  NodeAssert.equal(await speak(), "Hallo");
+});
+
 NodeTest.test("waits while a finished recording is being transcribed", async () => {
   const { live, state, speak } = await harness([[segment(0, 2, " spaeter")]]);
   state.busy = true;

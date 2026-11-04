@@ -156,7 +156,8 @@ export class LiveTranscriber {
           keptStart,
         );
       } else {
-        session.windowText = textOf(segments);
+        // Whisper can return nothing for a window it heard words in a second ago.
+        session.windowText = textOf(segments) || session.windowText;
       }
     } finally {
       // Windows refuses to delete a file in use, so end() may have left these behind.
