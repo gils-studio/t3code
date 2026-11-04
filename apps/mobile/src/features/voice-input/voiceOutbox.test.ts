@@ -414,6 +414,7 @@ describe("VoiceOutbox", () => {
     const handoff = h.outbox.createHandoff({
       ownerKey: "new-task",
       threadId: null,
+      sendsThroughDraft: () => false,
       readDraftText: () => "typed",
       clearDraftText: () => {
         throw new Error("the draft must stay");

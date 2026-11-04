@@ -217,7 +217,10 @@ export class VoiceOutbox {
   pendingDraftItemId(ownerKey: string): string | null {
     const pending = this.snapshot.filter(
       (item) =>
-        item.ownerKey === ownerKey && item.mode === "draft" && !item.heldMessage && isInFlight(item),
+        item.ownerKey === ownerKey &&
+        item.mode === "draft" &&
+        !item.heldMessage &&
+        isInFlight(item),
     );
     return pending.at(-1)?.id ?? null;
   }
