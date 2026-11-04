@@ -2176,6 +2176,16 @@ function renderFeedEntry(
                   senderThreadId={message.senderThreadId}
                 />
               ) : null}
+              {presentation.voice ? (
+                <View
+                  accessible
+                  accessibilityLabel="Voice message"
+                  className="flex-row items-center gap-1 pr-1"
+                >
+                  <SymbolView name="mic" size={12} tintColor={iconSubtleColor} />
+                  <Text className="font-t3-medium text-xs text-foreground-secondary">Voice</Text>
+                </View>
+              ) : null}
               {intentBadge ? (
                 <View
                   accessible

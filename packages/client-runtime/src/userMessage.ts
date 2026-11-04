@@ -32,6 +32,12 @@ export const IDLE_COMPACTION_TITLES = {
 const LEGACY_AUTOMATION_PREFIX = /^\[Triggered by schedule task: [^\r\n]+\]\r?\n\r?\n/;
 const LEGACY_AUTOMATION_MESSAGE_ID = /^scheduled-task-message:(.+):\d+:(?:scheduled|manual)$/;
 
+/** Also tells the agent that the words were dictated. tools/voice-server sends the same text. */
+export const VOICE_MESSAGE_PREFIX = "[Voice message]\n\n";
+
+export const stripVoiceMessagePrefix = (text: string) =>
+  text.startsWith(VOICE_MESSAGE_PREFIX) ? text.slice(VOICE_MESSAGE_PREFIX.length) : text;
+
 export function resolveUserMessageFileCards(message: {
   readonly text: string;
   readonly attachments: ReadonlyArray<ChatAttachment>;
@@ -65,6 +71,7 @@ export function resolveUserMessagePresentation(message: {
   readonly createdBy?: OrchestrationV2Actor;
   readonly creationSource?: OrchestrationV2CreationSource;
   readonly scheduledTaskId?: ScheduledTaskId | undefined;
+  readonly senderThreadId?: string | undefined;
   readonly context?: { readonly guest?: GuestMessageAttribution | undefined } | undefined;
 }): {
   readonly text: string;
@@ -72,6 +79,8 @@ export function resolveUserMessagePresentation(message: {
   readonly scheduledTaskId: ScheduledTaskId | undefined;
   /** Set when `attribution` is "guest". */
   readonly guestName?: string;
+  /** The user's own dictated words. */
+  readonly voice?: boolean;
 } {
   if (message.role !== "user") {
     return { text: message.text, attribution: null, scheduledTaskId: undefined };
@@ -102,6 +111,19 @@ export function resolveUserMessagePresentation(message: {
       text: message.text.slice(legacyPrefix[0].length),
       attribution: "automation",
       scheduledTaskId: legacyTaskId === undefined ? undefined : ScheduledTaskId.make(legacyTaskId),
+    };
+  }
+  // The voice service sends through T3's CLI, which files the user's words under "agent".
+  // Agents in a thread always carry a sender, so they cannot pass as the user this way.
+  if (
+    message.text.startsWith(VOICE_MESSAGE_PREFIX) &&
+    (message.createdBy !== "agent" || message.senderThreadId === undefined)
+  ) {
+    return {
+      text: stripVoiceMessagePrefix(message.text),
+      attribution: null,
+      scheduledTaskId: undefined,
+      voice: true,
     };
   }
   return {

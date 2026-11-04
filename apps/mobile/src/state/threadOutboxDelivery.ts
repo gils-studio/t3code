@@ -11,6 +11,7 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { threadFamilyRead, type ThreadFamilyRead } from "@t3tools/client-runtime/state/threads";
 import { deriveThreadTitleSeed } from "@t3tools/client-runtime/operations";
+import { stripVoiceMessagePrefix } from "@t3tools/client-runtime/user-message";
 import {
   AuthOrchestrationOperateScope,
   CommandId,
@@ -895,7 +896,7 @@ export function createThreadOutboxDelivery(): {
         },
         modelSelection: sendSettings.modelSelection,
         titleSeed: deriveThreadTitleSeed({
-          text: queuedMessage.text,
+          text: stripVoiceMessagePrefix(queuedMessage.text),
           attachments: queuedMessage.attachments,
         }),
         runtimeMode: sendSettings.runtimeMode,
@@ -1052,7 +1053,7 @@ export function createThreadOutboxDelivery(): {
         commandId: queuedMessage.commandId,
         messageId: queuedMessage.messageId,
         createdAt: queuedMessage.createdAt,
-        titleText: queuedMessage.text,
+        titleText: stripVoiceMessagePrefix(queuedMessage.text),
         ...serializeComposerMessageForServer(
           queuedMessage.text.trim(),
           uploadedComposerContext(

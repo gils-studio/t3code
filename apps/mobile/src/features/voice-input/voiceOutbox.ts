@@ -2,6 +2,7 @@ import type {
   VoiceRecordingDisposition,
   VoiceRecordingHandoff,
 } from "@t3tools/client-runtime/voice-input";
+import { VOICE_MESSAGE_PREFIX } from "@t3tools/client-runtime/user-message";
 
 export const VOICE_SERVER_RECORDING_LIMIT_SECONDS = 30 * 60;
 const POLL_INTERVAL_MS = 1_000;
@@ -431,7 +432,12 @@ export class VoiceOutbox {
       return;
     }
     if (held) {
-      await this.releaseHeldMessage(held, item, withTranscript(item.prefixText, transcript));
+      await this.releaseHeldMessage(
+        held,
+        item,
+        withTranscript(item.prefixText, transcript),
+        VOICE_MESSAGE_PREFIX,
+      );
     } else if (item.mode === "draft") {
       await this.dependencies.appendDraft(item.ownerKey, transcript);
     }
@@ -444,11 +450,12 @@ export class VoiceOutbox {
     held: VoiceHeldMessage,
     item: VoiceOutboxItem,
     text: string,
+    marker = "",
   ): Promise<void> {
     if (!held.releasing) {
       await this.persist({ ...item, heldMessage: { ...held, releasing: true } });
     }
-    const released = await this.dependencies.heldMessages.release(held, text);
+    const released = await this.dependencies.heldMessages.release(held, `${marker}${text}`);
     if (!released && !held.releasing) await this.dependencies.appendDraft(held.draftKey, text);
   }
 
