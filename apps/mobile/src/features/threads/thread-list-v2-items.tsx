@@ -10,6 +10,7 @@ import {
 } from "./thread-list-v2-row-appearance";
 import { RowPressable } from "../../components/ui/RowPressable";
 import { CustomSnoozeSheet } from "./CustomSnoozeSheet";
+import { TOGETHER_AUTHOR_SHELF } from "./messageAuthors";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { threadArrangementOpenAtom } from "../../state/thread-order";
 import { threadEnvironment } from "../../state/threads";
@@ -296,6 +297,33 @@ export const ThreadListV2SettledShelfHeader = memo(function ThreadListV2SettledS
   props: ThreadListV2ShelfHeaderProps,
 ) {
   return <ThreadListV2ShelfHeader {...props} kind="settled" />;
+});
+
+export const ThreadListV2AuthorShelfHeader = memo(function ThreadListV2AuthorShelfHeader(
+  props: Omit<ThreadListV2ShelfHeaderProps, "onToggle"> & {
+    readonly shelfKey: string;
+    readonly label: string;
+    readonly onToggle: (shelfKey: string) => void;
+  },
+) {
+  const threads = `${props.count} ${props.count === 1 ? "thread" : "threads"}`;
+  return (
+    <ThreadListV2Section
+      label={props.expanded ? props.label : `${props.label} (${props.count})`}
+      pane={props.pane}
+      disclosure={{
+        expanded: props.expanded,
+        disabled: props.disabled,
+        onToggle: () => props.onToggle(props.shelfKey),
+        accessibilityLabel: `${props.label}, ${threads}`,
+        accessibilityHint: `${props.expanded ? "Collapses" : "Expands"} the threads ${
+          props.shelfKey === TOGETHER_AUTHOR_SHELF
+            ? "written together"
+            : `only ${props.label} wrote in`
+        }.`,
+      }}
+    />
+  );
 });
 
 export const ThreadListV2ShowMoreRow = memo(function ThreadListV2ShowMoreRow(props: {

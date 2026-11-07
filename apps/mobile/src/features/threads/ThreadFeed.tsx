@@ -2180,12 +2180,25 @@ function renderFeedEntry(
               {presentation.voice ? (
                 <View
                   accessible
-                  accessibilityLabel="Voice message"
+                  accessibilityLabel={
+                    presentation.author
+                      ? `Voice message from ${presentation.author}`
+                      : "Voice message"
+                  }
                   className="flex-row items-center gap-1 pr-1"
                 >
                   <SymbolView name="mic" size={12} tintColor={iconSubtleColor} />
-                  <Text className="font-t3-medium text-xs text-foreground-secondary">Voice</Text>
+                  <Text className="font-t3-medium text-xs text-foreground-secondary">
+                    {presentation.author ?? "Voice"}
+                  </Text>
                 </View>
+              ) : presentation.author ? (
+                <Text
+                  accessibilityLabel={`Sent by ${presentation.author}`}
+                  className="pr-1 font-t3-medium text-xs text-foreground-secondary"
+                >
+                  {presentation.author}
+                </Text>
               ) : null}
               {intentBadge ? (
                 <View

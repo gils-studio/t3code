@@ -40,6 +40,9 @@ const SETTINGS_SEARCH_TERMS = {
     "working section",
     "new threads",
     "last project",
+    "your name",
+    "author",
+    "team",
   ],
   SettingsThreads: [
     "new threads",

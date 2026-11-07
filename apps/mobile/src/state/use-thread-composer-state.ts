@@ -6,6 +6,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/shell";
 import type { ThreadCheckpointSummary } from "@t3tools/client-runtime/state/thread-checkpoints";
 import { resolvePendingHandoff } from "@t3tools/client-runtime/handoff";
+import { withMessageAuthor } from "@t3tools/client-runtime/user-message";
 import {
   deriveProviderSubagentStatus,
   deriveResumableRunId,
@@ -110,6 +111,7 @@ import {
 import { dispatchingQueuedMessageIdAtom, useThreadOutboxMessages } from "./use-thread-outbox";
 import { threadEnvironment } from "./threads";
 import { useAtomCommand } from "./use-atom-command";
+import { currentMessageAuthorName } from "./message-author";
 
 const EMPTY_QUEUE_WORKFLOW_ATOM = Atom.make<null>(null).pipe(
   Atom.withLabel("mobile-thread-queue-workflow:empty"),
@@ -470,7 +472,10 @@ export function useThreadComposerState() {
       input: {
         threadId: thread.id,
         runId: edit.runId,
-        text: restoreAttachmentOnlyBootstrapPrompt(text, payload.attachments.length > 0),
+        text: withMessageAuthor(
+          restoreAttachmentOnlyBootstrapPrompt(text, payload.attachments.length > 0),
+          currentMessageAuthorName(),
+        ),
         edit: {
           messageId: edit.messageId,
           attachments: payload.attachments,

@@ -116,6 +116,11 @@ export interface Preferences {
   readonly projectGroupingMode?: SidebarProjectGroupingMode;
   readonly planModeEnabled?: boolean;
   readonly workingShelfEnabled?: boolean;
+  /** Who uses this device; names the author of every message sent from it. */
+  readonly messageAuthorName?: string;
+  /** Everyone else who sends messages, so the thread list can group by person. */
+  readonly teamMemberNames?: readonly string[];
+  readonly threadListCollapsedAuthorShelves?: readonly string[];
   readonly useLastProjectForNewThreads?: boolean;
   readonly lastThreadProject?: typeof ThreadProject.Type;
   readonly modelFavorites?: ReadonlyArray<{
@@ -196,6 +201,9 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     projectGroupingMode?: SidebarProjectGroupingMode;
     planModeEnabled?: boolean;
     workingShelfEnabled?: boolean;
+    messageAuthorName?: string;
+    teamMemberNames?: readonly string[];
+    threadListCollapsedAuthorShelves?: readonly string[];
     useLastProjectForNewThreads?: boolean;
     lastThreadProject?: typeof ThreadProject.Type;
     modelFavorites?: Preferences["modelFavorites"];
@@ -323,6 +331,19 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   }
   if (typeof parsed.workingShelfEnabled === "boolean") {
     preferences.workingShelfEnabled = parsed.workingShelfEnabled;
+  }
+  if (typeof parsed.messageAuthorName === "string" && parsed.messageAuthorName.trim() !== "") {
+    preferences.messageAuthorName = parsed.messageAuthorName;
+  }
+  if (Array.isArray(parsed.teamMemberNames)) {
+    preferences.teamMemberNames = parsed.teamMemberNames.filter(
+      (name): name is string => typeof name === "string" && name.trim() !== "",
+    );
+  }
+  if (Array.isArray(parsed.threadListCollapsedAuthorShelves)) {
+    preferences.threadListCollapsedAuthorShelves = parsed.threadListCollapsedAuthorShelves.filter(
+      (key): key is string => typeof key === "string",
+    );
   }
   if (typeof parsed.useLastProjectForNewThreads === "boolean") {
     preferences.useLastProjectForNewThreads = parsed.useLastProjectForNewThreads;

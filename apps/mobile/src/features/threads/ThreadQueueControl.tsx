@@ -7,7 +7,7 @@ import {
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   resolveUserMessagePresentation,
-  stripVoiceMessagePrefix,
+  stripMessageMarker,
 } from "@t3tools/client-runtime/user-message";
 import type { ChatAttachment, EnvironmentId, RunId, ThreadId } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
@@ -197,7 +197,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
         {
           runId,
           messageId: entry.messageId,
-          originalText: stripVoiceMessagePrefix(entry.text),
+          originalText: stripMessageMarker(entry.text),
           existingAttachments: entry.attachments,
           ...(entry.context ? { context: entry.context } : {}),
         },
@@ -277,7 +277,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
           editBlocked: editBlockedReason !== null,
           isEditing: editing?.runId === run.id,
           isGuestMessage: context?.guest !== undefined,
-          text: stripVoiceMessagePrefix(text),
+          text: stripMessageMarker(text),
         });
         const title =
           controls.displayText || (attachments.length > 0 ? "Attachments" : "Queued message");

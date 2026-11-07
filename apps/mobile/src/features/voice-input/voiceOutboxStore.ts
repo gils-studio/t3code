@@ -47,6 +47,7 @@ export const voiceOutboxFileStore: VoiceOutboxStore = {
         threadId: item.threadId ?? "",
         language: item.language,
         prefixText: item.prefixText,
+        ...(item.speaker ? { speaker: item.speaker } : {}),
       }),
     );
     // A crash may land between the move and saving the item.

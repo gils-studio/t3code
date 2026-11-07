@@ -21,7 +21,7 @@ export type JobMeta = {
 
 export type Job = JobMeta & {
   readonly id: string;
-  /** Comes from the device token, never from the phone's metadata. Missing on unnamed phones. */
+  /** The name set on the phone, else the one its token was paired with. Missing when neither. */
   readonly speaker?: string;
   readonly status: JobStatus;
   readonly transcript: string | null;

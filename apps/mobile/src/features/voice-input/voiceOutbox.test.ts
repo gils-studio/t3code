@@ -9,7 +9,9 @@ import {
   type VoiceServerClient,
 } from "./voiceOutbox";
 
-function harness(options: { readonly saved?: ReadonlyArray<VoiceOutboxItem> } = {}) {
+function harness(
+  options: { readonly saved?: ReadonlyArray<VoiceOutboxItem>; readonly speaker?: string } = {},
+) {
   const stored = new Map((options.saved ?? []).map((item) => [item.id, item]));
   const missingAudio = new Set<string>();
   const store: VoiceOutboxStore = {
@@ -49,6 +51,7 @@ function harness(options: { readonly saved?: ReadonlyArray<VoiceOutboxItem> } = 
     live,
     newId: () => `voice-${(sequence += 1)}`,
     language: () => "de",
+    speaker: () => options.speaker,
     now: () => sequence,
   });
   let draftText = "typed";
@@ -166,8 +169,8 @@ describe("VoiceOutbox", () => {
       draftKey: "new-chat",
       sendsAlone: false,
     };
-    const sendFromNewChat = async () => {
-      const h = harness();
+    const sendFromNewChat = async (speaker?: string) => {
+      const h = harness(speaker === undefined ? {} : { speaker });
       const handoff = h.outbox.createHandoff({
         ownerKey: "new-chat",
         threadId: null,
@@ -180,8 +183,8 @@ describe("VoiceOutbox", () => {
       await h.outbox.poll();
       return h;
     };
-    const holdIt = async (prefixText = "") => {
-      const h = await sendFromNewChat();
+    const holdIt = async (prefixText = "", speaker?: string) => {
+      const h = await sendFromNewChat(speaker);
       const enqueue = vi.fn(async () => {});
       const hold = () =>
         h.outbox.holdThreadMessage("voice-1", held, "thread-key", prefixText, enqueue);
@@ -235,6 +238,16 @@ describe("VoiceOutbox", () => {
       expect(h.heldMessages.release).toHaveBeenCalledWith(
         held,
         "[Voice message from Nils]\n\ntyped\n\nhallo",
+      );
+    });
+
+    it("names the speaker set on this phone over the one the service paired", async () => {
+      const h = await holdIt("typed", "Gerrit");
+      h.jobs.set("voice-1", { ...h.done("hallo"), speaker: "Nils" });
+      await h.outbox.poll();
+      expect(h.heldMessages.release).toHaveBeenCalledWith(
+        held,
+        "[Voice message from Gerrit]\n\ntyped\n\nhallo",
       );
     });
 

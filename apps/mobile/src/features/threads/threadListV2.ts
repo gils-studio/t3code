@@ -322,8 +322,18 @@ export interface ThreadListV2Item {
   readonly isLast: boolean;
 }
 
+export interface ThreadListV2AuthorShelf {
+  readonly key: string;
+  readonly label: string;
+  readonly count: number;
+  readonly headerIndex: number;
+  readonly expanded: boolean;
+}
+
 export interface ThreadListV2Layout {
   readonly items: ThreadListV2Item[];
+  /** Shelves that split the inbox by who wrote in each thread, in list order. */
+  readonly authorShelves: ReadonlyArray<ThreadListV2AuthorShelf>;
   readonly hiddenSettledCount: number;
   /** The settled rows the shelf may list, before its visible limit. */
   readonly listedSettledThreads: ReadonlyArray<EnvironmentThreadShell>;
@@ -378,6 +388,16 @@ export interface ThreadListV2SnoozedShelfListItem {
   readonly disabled: boolean;
 }
 
+export interface ThreadListV2AuthorShelfListItem {
+  readonly type: "v2-author-shelf";
+  readonly key: string;
+  readonly shelfKey: string;
+  readonly label: string;
+  readonly count: number;
+  readonly expanded: boolean;
+  readonly disabled: boolean;
+}
+
 export interface ThreadListV2SettledShelfListItem {
   readonly type: "v2-settled-shelf";
   readonly key: "v2-settled-shelf";
@@ -389,6 +409,7 @@ export interface ThreadListV2SettledShelfListItem {
 export type ThreadListV2ListItem =
   | ThreadListV2ThreadListItem
   | ThreadListV2PendingListItem
+  | ThreadListV2AuthorShelfListItem
   | ThreadListV2WorkingShelfListItem
   | ThreadListV2SnoozedShelfListItem
   | ThreadListV2SettledShelfListItem;
@@ -399,6 +420,7 @@ export function isThreadListV2ListItem(value: {
   return (
     value.type === "v2-thread" ||
     value.type === "v2-pending" ||
+    value.type === "v2-author-shelf" ||
     value.type === "v2-working-shelf" ||
     value.type === "v2-snoozed-shelf" ||
     value.type === "v2-settled-shelf"
@@ -435,6 +457,15 @@ export function threadListV2ListItemsAreEqual(
         previous.pendingTask === item.pendingTask &&
         previous.showPendingDivider === item.showPendingDivider &&
         previous.showTrailingDivider === item.showTrailingDivider
+      );
+    case "v2-author-shelf":
+      return (
+        previous.type === "v2-author-shelf" &&
+        previous.key === item.key &&
+        previous.label === item.label &&
+        previous.count === item.count &&
+        previous.expanded === item.expanded &&
+        previous.disabled === item.disabled
       );
     case "v2-working-shelf":
       return (
@@ -483,6 +514,7 @@ function resolveThreadListV2ItemTimeLabel(
 export function buildThreadListV2ListItems(input: {
   readonly items: ReadonlyArray<ThreadListV2Item>;
   readonly pendingTasks: ReadonlyArray<PendingNewTask>;
+  readonly authorShelves?: ReadonlyArray<ThreadListV2AuthorShelf>;
   readonly workingCount?: number;
   readonly workingShelfExpanded?: boolean;
   readonly workingShelfHeaderIndex?: number | null;
@@ -498,6 +530,7 @@ export function buildThreadListV2ListItems(input: {
   readonly moveAvailability?: ReadonlyMap<string, ThreadMoveAvailability>;
   readonly shelfPreferencesLoading?: boolean;
 }): ThreadListV2ListItem[] {
+  const authorShelves = input.authorShelves ?? [];
   const queuedThreadKeys = input.queuedThreadKeys?.size ? input.queuedThreadKeys : undefined;
   const threadItems = input.items.map((item): ThreadListV2ListItem => {
     const snoozeWakeLabelText =
@@ -512,8 +545,9 @@ export function buildThreadListV2ListItems(input: {
       canSnooze(item.thread, { now: input.snoozeLabelNow })
         ? input.snoozeLabelNow
         : undefined;
+    // Reordering the inbox would move threads past ones hidden in other author shelves.
     const move =
-      item.variant === "card"
+      item.variant === "card" && (item.pinned || authorShelves.length === 0)
         ? input.moveAvailability?.get(`${item.thread.environmentId}:${item.thread.id}`)
         : undefined;
     return {
@@ -546,8 +580,25 @@ export function buildThreadListV2ListItems(input: {
   const snoozedEnd = settledShelfHeaderIndex ?? threadItems.length;
   const workingEnd = snoozedShelfHeaderIndex ?? snoozedEnd;
   const activeEnd = workingShelfHeaderIndex ?? workingEnd;
-  const result: ThreadListV2ListItem[] = [...pendingItems, ...threadItems.slice(0, activeEnd)];
+  const result: ThreadListV2ListItem[] = [
+    ...pendingItems,
+    ...threadItems.slice(0, authorShelves[0]?.headerIndex ?? activeEnd),
+  ];
   const shelfDisabled = input.shelfPreferencesLoading === true;
+  authorShelves.forEach((shelf, index) => {
+    result.push({
+      type: "v2-author-shelf",
+      key: `v2-author-shelf:${shelf.key}`,
+      shelfKey: shelf.key,
+      label: shelf.label,
+      count: shelf.count,
+      expanded: shelf.expanded,
+      disabled: shelfDisabled,
+    });
+    result.push(
+      ...threadItems.slice(shelf.headerIndex, authorShelves[index + 1]?.headerIndex ?? activeEnd),
+    );
+  });
   if (workingShelfHeaderIndex !== null && workingCount > 0) {
     result.push({
       type: "v2-working-shelf",
@@ -632,6 +683,10 @@ export function buildThreadListV2Items(input: {
   readonly snoozedShelfExpanded?: boolean;
   readonly settledShelfExpanded?: boolean;
   readonly selectedThreadKey?: string | null;
+  /** The shelves to split the inbox into, in order, and which one a thread belongs in. */
+  readonly authorShelves?: ReadonlyArray<{ readonly key: string; readonly label: string }>;
+  readonly authorShelfOf?: (thread: EnvironmentThreadShell) => string | null;
+  readonly collapsedAuthorShelves?: ReadonlySet<string>;
   readonly queuedThreadKeys?: ReadonlySet<string>;
   /** Whether the shelf may list a settled row yet; older settled rows load in pages. */
   readonly isListedSettled?: (thread: EnvironmentThreadShell) => boolean;
@@ -740,6 +795,7 @@ export function buildThreadListV2Items(input: {
     });
     const results = [...rankedMatches, ...contentOnly];
     return {
+      authorShelves: [],
       items: results.map((thread, index) => ({
         thread,
         variant: slim.has(thread) ? "slim" : "card",
@@ -822,7 +878,20 @@ export function buildThreadListV2Items(input: {
       isLast: false,
     });
   }
+  const shelfByKey = new Map<string, EnvironmentThreadShell[]>(
+    (input.authorShelfOf === undefined ? [] : (input.authorShelves ?? [])).map((shelf) => [
+      shelf.key,
+      [],
+    ]),
+  );
+  const ungroupedActive: EnvironmentThreadShell[] = [];
   for (const thread of orderedActive) {
+    const shelf = shelfByKey.size > 0 ? input.authorShelfOf?.(thread) : null;
+    const shelved = shelf == null ? undefined : shelfByKey.get(shelf);
+    if (shelved === undefined) ungroupedActive.push(thread);
+    else shelved.push(thread);
+  }
+  const pushActive = (thread: EnvironmentThreadShell) =>
     items.push({
       thread,
       variant: "card",
@@ -831,6 +900,24 @@ export function buildThreadListV2Items(input: {
       wokeAt: resolveThreadListV2WokeAt(thread, { now }),
       isLast: false,
     });
+  ungroupedActive.forEach(pushActive);
+  const authorShelves: ThreadListV2AuthorShelf[] = [];
+  for (const shelf of input.authorShelves ?? []) {
+    const threads = shelfByKey.get(shelf.key) ?? [];
+    if (threads.length === 0) continue;
+    const expanded = input.collapsedAuthorShelves?.has(shelf.key) !== true;
+    authorShelves.push({
+      key: shelf.key,
+      label: shelf.label,
+      count: threads.length,
+      headerIndex: items.length,
+      expanded,
+    });
+    for (const thread of threads) {
+      if (expanded || `${thread.environmentId}:${thread.id}` === selectedThreadKey) {
+        pushActive(thread);
+      }
+    }
   }
   const workingShelfHeaderIndex = orderedWorking.length > 0 ? items.length : null;
   for (const thread of visibleWorking) {
@@ -871,6 +958,7 @@ export function buildThreadListV2Items(input: {
   }
   return {
     items,
+    authorShelves,
     hiddenSettledCount: Math.max(0, settledTotal - pagedSettled.length),
     listedSettledThreads: listedSettled,
     workingCount: orderedWorking.length,

@@ -53,6 +53,8 @@ export type VoiceOutboxItem = {
   /** The live words at the end of the recording, shown until the transcript replaces them. */
   readonly previewText?: string;
   readonly language: string;
+  /** Who uses this phone, from its settings; the service falls back to the name it paired. */
+  readonly speaker?: string;
   /** Set until the audio has moved into outbox storage. */
   readonly sourceUri: string | null;
   readonly phase: VoiceOutboxPhase;
@@ -105,6 +107,7 @@ export type VoiceOutboxDependencies = {
   };
   readonly newId: () => string;
   readonly language: () => string;
+  readonly speaker: () => string | undefined;
   readonly now: () => number;
 };
 
@@ -185,6 +188,7 @@ export class VoiceOutbox {
     const begin = (uri: string) => {
       const itemId = this.dependencies.newId();
       id = itemId;
+      const speaker = this.dependencies.speaker();
       return this.persist({
         id: itemId,
         ownerKey: target.ownerKey,
@@ -193,6 +197,7 @@ export class VoiceOutbox {
         submitDraft: false,
         prefixText: "",
         language: this.dependencies.language(),
+        ...(speaker ? { speaker } : {}),
         sourceUri: uri,
         phase: "recording",
         remoteStatus: null,
@@ -438,7 +443,7 @@ export class VoiceOutbox {
         held,
         item,
         withTranscript(item.prefixText, transcript),
-        voiceMessagePrefix(job.speaker),
+        voiceMessagePrefix(item.speaker ?? job.speaker),
       );
     } else if (item.mode === "draft") {
       await this.dependencies.appendDraft(item.ownerKey, transcript);
