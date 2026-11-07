@@ -893,11 +893,11 @@ export function createThreadOutboxDelivery(): {
           ...signedMessage(
             serializeComposerMessageForServer(
               queuedMessage.text,
-            uploadedComposerContext(
-              queuedMessage.context,
-              queuedMessage.attachments,
-              prepared.attachments,
-            ),
+              uploadedComposerContext(
+                queuedMessage.context,
+                queuedMessage.attachments,
+                prepared.attachments,
+              ),
             ),
           ),
           attachments: prepared.attachments,
@@ -1065,11 +1065,11 @@ export function createThreadOutboxDelivery(): {
         ...signedMessage(
           serializeComposerMessageForServer(
             queuedMessage.text.trim(),
-          uploadedComposerContext(
-            queuedMessage.context,
-            queuedMessage.attachments,
-            prepared.attachments,
-          ),
+            uploadedComposerContext(
+              queuedMessage.context,
+              queuedMessage.attachments,
+              prepared.attachments,
+            ),
           ),
         ),
         uploadedAttachments: prepared.attachments,

@@ -317,7 +317,9 @@ export const ThreadListV2AuthorShelfHeader = memo(function ThreadListV2AuthorShe
         onToggle: () => props.onToggle(props.shelfKey),
         accessibilityLabel: `${props.label}, ${threads}`,
         accessibilityHint: `${props.expanded ? "Collapses" : "Expands"} the threads ${
-          props.shelfKey === TOGETHER_AUTHOR_SHELF ? "written together" : `only ${props.label} wrote in`
+          props.shelfKey === TOGETHER_AUTHOR_SHELF
+            ? "written together"
+            : `only ${props.label} wrote in`
         }.`,
       }}
     />

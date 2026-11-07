@@ -196,7 +196,9 @@ describe("resolveUserMessagePresentation", () => {
       author: "Gerrit",
     });
     expect(withMessageAuthor(text, "Nils")).toBe(text);
-    expect(withMessageAuthor(voiceMessagePrefix("Nils"), "Gerrit")).toBe(voiceMessagePrefix("Nils"));
+    expect(withMessageAuthor(voiceMessagePrefix("Nils"), "Gerrit")).toBe(
+      voiceMessagePrefix("Nils"),
+    );
     expect(withMessageAuthor("Bitte deployen", "  ")).toBe("Bitte deployen");
     expect(withMessageAuthor("/compact", "Nils")).toBe("/compact");
     expect(

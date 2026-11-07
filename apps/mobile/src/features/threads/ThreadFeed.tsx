@@ -2181,7 +2181,9 @@ function renderFeedEntry(
                 <View
                   accessible
                   accessibilityLabel={
-                    presentation.author ? `Voice message from ${presentation.author}` : "Voice message"
+                    presentation.author
+                      ? `Voice message from ${presentation.author}`
+                      : "Voice message"
                   }
                   className="flex-row items-center gap-1 pr-1"
                 >

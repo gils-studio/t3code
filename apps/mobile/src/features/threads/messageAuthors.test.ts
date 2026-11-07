@@ -29,8 +29,9 @@ function thread(id: string, latestUserMessageAt: string | null = "2026-11-08T10:
 describe("team people", () => {
   it("reads names once each, this device's own first", () => {
     expect(parseTeamMemberNames(" Nils, ,nils,Ann]a ")).toEqual(["Nils", "Anna"]);
-    expect(resolveTeamPeople({ messageAuthorName: "Gerrit", teamMemberNames: ["gerrit", "Nils"] }))
-      .toEqual(["Gerrit", "Nils"]);
+    expect(
+      resolveTeamPeople({ messageAuthorName: "Gerrit", teamMemberNames: ["gerrit", "Nils"] }),
+    ).toEqual(["Gerrit", "Nils"]);
   });
 
   it("puts a thread on its only author's shelf, or the shared one", () => {

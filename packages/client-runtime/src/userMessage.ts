@@ -42,7 +42,8 @@ export const voiceMessagePrefix = (speaker?: string | null) =>
 /** Tells the agent who typed the message; people see the name under it instead. */
 export const typedMessagePrefix = (author: string) => `[Message from ${author}]\n\n`;
 
-const MESSAGE_MARKER = /^\[(?:Voice message(?: from ([^\]\r\n]+))?|Message from ([^\]\r\n]+))\]\n\n/;
+const MESSAGE_MARKER =
+  /^\[(?:Voice message(?: from ([^\]\r\n]+))?|Message from ([^\]\r\n]+))\]\n\n/;
 
 /** Who a marker names and whether it marks dictation, or null for unmarked text. */
 export function parseMessageMarker(text: string): {
