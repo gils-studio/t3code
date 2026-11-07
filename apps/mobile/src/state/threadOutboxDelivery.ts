@@ -11,7 +11,7 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { threadFamilyRead, type ThreadFamilyRead } from "@t3tools/client-runtime/state/threads";
 import { deriveThreadTitleSeed } from "@t3tools/client-runtime/operations";
-import { stripVoiceMessagePrefix } from "@t3tools/client-runtime/user-message";
+import { stripMessageMarker, withMessageAuthor } from "@t3tools/client-runtime/user-message";
 import {
   AuthOrchestrationOperateScope,
   CommandId,
@@ -41,6 +41,7 @@ import {
   forgetAcknowledgedThreadMessage,
 } from "./acknowledged-thread-messages";
 import { appAtomRegistry } from "./atom-registry";
+import { currentMessageAuthorName } from "./message-author";
 import { restoredNewTaskDraftKey } from "./new-task-draft-key";
 import {
   clearPendingThreadCreationOutcome,
@@ -94,6 +95,11 @@ import { clearThreadComposerError, setThreadComposerError } from "./thread-compo
 import { workspaceConnections } from "./workspace";
 
 const threadOutboxDebug = createDebugLogger("thread-outbox");
+
+// Signed after serializing, so attachment-only text is still recognized as such.
+function signedMessage<T extends { readonly text: string }>(message: T): T {
+  return { ...message, text: withMessageAuthor(message.text, currentMessageAuthorName()) };
+}
 
 function isRpcClientDecodeDefect(error: unknown): boolean {
   if (
@@ -884,19 +890,21 @@ export function createThreadOutboxDelivery(): {
         message: {
           messageId: queuedMessage.messageId,
           role: "user",
-          ...serializeComposerMessageForServer(
-            queuedMessage.text,
+          ...signedMessage(
+            serializeComposerMessageForServer(
+              queuedMessage.text,
             uploadedComposerContext(
               queuedMessage.context,
               queuedMessage.attachments,
               prepared.attachments,
+            ),
             ),
           ),
           attachments: prepared.attachments,
         },
         modelSelection: sendSettings.modelSelection,
         titleSeed: deriveThreadTitleSeed({
-          text: stripVoiceMessagePrefix(queuedMessage.text),
+          text: stripMessageMarker(queuedMessage.text),
           attachments: queuedMessage.attachments,
         }),
         runtimeMode: sendSettings.runtimeMode,
@@ -1053,13 +1061,15 @@ export function createThreadOutboxDelivery(): {
         commandId: queuedMessage.commandId,
         messageId: queuedMessage.messageId,
         createdAt: queuedMessage.createdAt,
-        titleText: stripVoiceMessagePrefix(queuedMessage.text),
-        ...serializeComposerMessageForServer(
-          queuedMessage.text.trim(),
+        titleText: stripMessageMarker(queuedMessage.text),
+        ...signedMessage(
+          serializeComposerMessageForServer(
+            queuedMessage.text.trim(),
           uploadedComposerContext(
             queuedMessage.context,
             queuedMessage.attachments,
             prepared.attachments,
+          ),
           ),
         ),
         uploadedAttachments: prepared.attachments,

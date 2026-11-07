@@ -69,6 +69,7 @@ import {
   ThreadListV2PendingRow,
   ThreadListV2Row,
   ThreadListV2SettledShelfHeader,
+  ThreadListV2AuthorShelfHeader,
   ThreadListV2ShowMoreRow,
   ThreadListV2SnoozedShelfHeader,
   ThreadListV2WorkingShelfHeader,
@@ -272,6 +273,9 @@ function ThreadNavigationSidebarPane(
     setSettledVisibleCount((count) => count + THREAD_LIST_V2_SETTLED_PAGE_COUNT);
   const {
     loaded: shelfPreferencesLoaded,
+    authorShelves,
+    collapsedAuthorShelves,
+    toggleAuthorShelf,
     settledShelfExpanded,
     snoozedShelfExpanded,
     workingShelfEnabled,
@@ -321,6 +325,8 @@ function ThreadNavigationSidebarPane(
     workingShelfExpanded,
     snoozedShelfExpanded,
     settledShelfExpanded,
+    authorShelves,
+    collapsedAuthorShelves,
     selectedThreadKey: props.selectedThreadKey ?? null,
   });
   const listItems: readonly SidebarListItem[] =
@@ -613,6 +619,18 @@ function ThreadNavigationSidebarPane(
           />
         );
       }
+      case "v2-author-shelf":
+        return (
+          <ThreadListV2AuthorShelfHeader
+            shelfKey={item.shelfKey}
+            label={item.label}
+            count={item.count}
+            disabled={item.disabled}
+            expanded={item.expanded}
+            onToggle={toggleAuthorShelf}
+            pane="sidebar"
+          />
+        );
       case "v2-working-shelf":
         return (
           <ThreadListV2WorkingShelfHeader

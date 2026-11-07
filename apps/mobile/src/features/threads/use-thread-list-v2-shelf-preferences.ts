@@ -1,7 +1,9 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
+import { useMemo } from "react";
 
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
+import { authorShelfKey, resolveTeamPeople, TOGETHER_AUTHOR_SHELF } from "./messageAuthors";
 
 export function useThreadListV2ShelfPreferences() {
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
@@ -14,6 +16,21 @@ export function useThreadListV2ShelfPreferences() {
   const workingShelfEnabled = loaded && preferencesResult.value.workingShelfEnabled !== false;
   const workingShelfExpanded =
     loaded && preferencesResult.value.threadListWorkingShelfExpanded === true;
+
+  const people = loaded ? resolveTeamPeople(preferencesResult.value).join("\n") : "";
+  const authorShelves = useMemo(() => {
+    const names = people === "" ? [] : people.split("\n");
+    return [
+      ...names.map((name) => ({ key: authorShelfKey(name), label: name })),
+      ...(names.length > 1 ? [{ key: TOGETHER_AUTHOR_SHELF, label: "Together" }] : []),
+    ];
+  }, [people]);
+  const collapsed = loaded ? (preferencesResult.value.threadListCollapsedAuthorShelves ?? []) : [];
+  const collapsedKey = collapsed.join("\n");
+  const collapsedAuthorShelves = useMemo(
+    () => new Set(collapsedKey === "" ? [] : collapsedKey.split("\n")),
+    [collapsedKey],
+  );
 
   // Transforms read optimistic state so same-frame presses toggle twice.
   const toggleSnoozedShelf = () => {
@@ -41,8 +58,25 @@ export function useThreadListV2ShelfPreferences() {
     });
   };
 
+  const toggleAuthorShelf = (key: string) => {
+    if (!loaded) return;
+    savePreferences({
+      transform: (current) => {
+        const shelves = current.threadListCollapsedAuthorShelves ?? [];
+        return {
+          threadListCollapsedAuthorShelves: shelves.includes(key)
+            ? shelves.filter((shelf) => shelf !== key)
+            : [...shelves, key],
+        };
+      },
+    });
+  };
+
   return {
     loaded,
+    authorShelves,
+    collapsedAuthorShelves,
+    toggleAuthorShelf,
     settledShelfExpanded,
     snoozedShelfExpanded,
     workingShelfEnabled,

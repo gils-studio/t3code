@@ -16,6 +16,7 @@ import {
 import { VoiceLivePreview, type VoiceLiveClient } from "./voiceLivePreview";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { appAtomRegistry } from "../../state/atom-registry";
+import { currentMessageAuthorName } from "../../state/message-author";
 import {
   enqueueThreadOutboxMessage,
   threadOutboxManager,
@@ -126,6 +127,7 @@ export const voiceOutbox = new VoiceOutbox({
   live: voiceLivePreview,
   newId: () => `voice-${uuidv4()}`,
   language: deviceLanguage,
+  speaker: currentMessageAuthorName,
   now: Date.now,
 });
 

@@ -49,9 +49,13 @@ export function isAuthorized(header: string | undefined, hashes: ReadonlyArray<s
 const speakerOf = (header: string, speakers: Readonly<Record<string, string>>) =>
   speakers[hashOfBearer(header).toString("hex")];
 
-export function parseMeta(line: string): JobMeta | null {
+// Same rule as `pair`: one line that fits in the marker.
+const SPEAKER_PATTERN = /^[^\]\r\n]{1,40}$/;
+
+/** The phone's own name for its user wins over the name its token was paired with. */
+export function parseMeta(line: string): (JobMeta & { readonly speaker?: string }) | null {
   try {
-    const value = JSON.parse(line) as Partial<JobMeta>;
+    const value = JSON.parse(line) as Partial<JobMeta> & { readonly speaker?: unknown };
     if (value.mode !== "draft" && value.mode !== "send") return null;
     // A draft job can come from a new task, which has no thread yet.
     const threadId = typeof value.threadId === "string" ? value.threadId : "";
@@ -63,6 +67,9 @@ export function parseMeta(line: string): JobMeta | null {
       threadId,
       language,
       prefixText: typeof value.prefixText === "string" ? value.prefixText : "",
+      ...(typeof value.speaker === "string" && SPEAKER_PATTERN.test(value.speaker.trim())
+        ? { speaker: value.speaker.trim() }
+        : {}),
     };
   } catch {
     return null;
@@ -99,7 +106,7 @@ async function receiveUpload(
   const partial = await store.partialAudioPath(id);
   const output = NodeFS.createWriteStream(partial);
   let header = Buffer.alloc(0);
-  let meta: JobMeta | null = null;
+  let meta: ReturnType<typeof parseMeta> = null;
   let received = 0;
   try {
     for await (const chunk of request as AsyncIterable<Buffer>) {
@@ -131,12 +138,13 @@ async function receiveUpload(
     } finally {
       await handle.close();
     }
+    const { speaker, ...jobMeta } = meta;
     return await store.create(
       id,
-      meta,
+      jobMeta,
       partial,
       (options.now ?? Date.now)(),
-      speakerOf(request.headers.authorization ?? "", options.speakers()),
+      speaker ?? speakerOf(request.headers.authorization ?? "", options.speakers()),
     );
   } finally {
     output.destroy();

@@ -47,21 +47,26 @@ const auth = { authorization: `Bearer ${token}` };
 const body = (audio: string, meta: object = { mode: "send", threadId: "t", language: "de" }) =>
   `${JSON.stringify(meta)}\n${audio}`;
 
-NodeTest.test("names the speaker from the token, whatever the phone says", async () => {
+NodeTest.test("names the speaker the phone set, else the one its token was paired with", async () => {
   const upload = (id: string, secret: string, meta: object) =>
     fetch(`${base}/v1/jobs/${id}`, {
       method: "PUT",
       headers: { authorization: `Bearer ${secret}` },
       body: body("audio", meta),
     });
-  const meta = { mode: "send", threadId: "t", language: "de", speaker: "Gerrit" };
-  const named = await upload("speaker-named", namedToken, meta);
-  NodeAssert.equal(((await named.json()) as { speaker: unknown }).speaker, "Nils");
-  NodeAssert.equal(store.get("speaker-named")?.speaker, "Nils");
-  const unnamed = await upload("speaker-unnamed", token, meta);
-  NodeAssert.equal(((await unnamed.json()) as { speaker: unknown }).speaker, null);
-  NodeAssert.equal(store.get("speaker-unnamed")?.speaker, undefined);
-  await Promise.all(["speaker-named", "speaker-unnamed"].map((id) => store.remove(id)));
+  const meta = { mode: "send", threadId: "t", language: "de" };
+  const cases = [
+    ["speaker-phone", namedToken, { ...meta, speaker: " Gerrit " }, "Gerrit"],
+    ["speaker-token", namedToken, meta, "Nils"],
+    ["speaker-bad-name", namedToken, { ...meta, speaker: "Ger]rit" }, "Nils"],
+    ["speaker-unnamed", token, meta, undefined],
+  ] as const;
+  for (const [id, secret, sent, expected] of cases) {
+    const response = await upload(id, secret, sent);
+    NodeAssert.equal(((await response.json()) as { speaker: unknown }).speaker, expected ?? null);
+    NodeAssert.equal(store.get(id)?.speaker, expected);
+  }
+  await Promise.all(cases.map(([id]) => store.remove(id)));
 });
 
 NodeTest.test("rejects requests without a valid token", async () => {

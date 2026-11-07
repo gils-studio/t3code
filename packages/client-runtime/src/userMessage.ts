@@ -34,14 +34,45 @@ const LEGACY_AUTOMATION_MESSAGE_ID = /^scheduled-task-message:(.+):\d+:(?:schedu
 
 /**
  * Tells the agent that the words were dictated, and by whom when the voice service knows the
- * phone. People never see it. tools/voice-server sends the same text.
+ * phone. People see the name under the message instead. tools/voice-server sends the same text.
  */
 export const voiceMessagePrefix = (speaker?: string | null) =>
   speaker ? `[Voice message from ${speaker}]\n\n` : "[Voice message]\n\n";
 
-const VOICE_MESSAGE_PREFIX = /^\[Voice message(?: from [^\]\r\n]+)?\]\n\n/;
+/** Tells the agent who typed the message; people see the name under it instead. */
+export const typedMessagePrefix = (author: string) => `[Message from ${author}]\n\n`;
 
-export const stripVoiceMessagePrefix = (text: string) => text.replace(VOICE_MESSAGE_PREFIX, "");
+const MESSAGE_MARKER = /^\[(?:Voice message(?: from ([^\]\r\n]+))?|Message from ([^\]\r\n]+))\]\n\n/;
+
+/** Who a marker names and whether it marks dictation, or null for unmarked text. */
+export function parseMessageMarker(text: string): {
+  readonly length: number;
+  readonly author: string | undefined;
+  readonly voice: boolean;
+} | null {
+  const match = MESSAGE_MARKER.exec(text);
+  if (match === null) return null;
+  const author = (match[1] ?? match[2])?.trim();
+  return { length: match[0].length, author: author || undefined, voice: match[2] === undefined };
+}
+
+export const stripMessageMarker = (text: string) =>
+  text.slice(parseMessageMarker(text)?.length ?? 0);
+
+/** A name that fits in a marker: one line, no closing bracket. */
+export const normalizeMessageAuthor = (name: string | null | undefined) =>
+  name?.replace(/[\]\r\n]/g, "").trim() || undefined;
+
+/**
+ * Names the author for the agent, unless the text already carries a marker or is a slash command,
+ * which providers only recognize at the very start.
+ */
+export function withMessageAuthor(text: string, author: string | null | undefined): string {
+  const name = normalizeMessageAuthor(author);
+  return name && parseMessageMarker(text) === null && !text.trimStart().startsWith("/")
+    ? `${typedMessagePrefix(name)}${text}`
+    : text;
+}
 
 export function resolveUserMessageFileCards(message: {
   readonly text: string;
@@ -86,6 +117,8 @@ export function resolveUserMessagePresentation(message: {
   readonly guestName?: string;
   /** The user's own dictated words. */
   readonly voice?: boolean;
+  /** Who wrote or dictated it, from its marker. */
+  readonly author?: string;
 } {
   if (message.role !== "user") {
     return { text: message.text, attribution: null, scheduledTaskId: undefined };
@@ -120,15 +153,15 @@ export function resolveUserMessagePresentation(message: {
   }
   // The voice service sends through T3's CLI, which files the user's words under "agent".
   // Agents in a thread always carry a sender, so they cannot pass as the user this way.
-  if (
-    VOICE_MESSAGE_PREFIX.test(message.text) &&
-    (message.createdBy !== "agent" || message.senderThreadId === undefined)
-  ) {
+  const marker = parseMessageMarker(message.text);
+  if (marker !== null && (message.createdBy !== "agent" || message.senderThreadId === undefined)) {
+    const text = message.text.slice(marker.length);
     return {
-      text: stripVoiceMessagePrefix(message.text),
+      text: isAttachmentOnlyBootstrapPrompt(text) ? "" : text,
       attribution: null,
       scheduledTaskId: undefined,
-      voice: true,
+      ...(marker.voice ? { voice: true } : {}),
+      ...(marker.author === undefined ? {} : { author: marker.author }),
     };
   }
   return {

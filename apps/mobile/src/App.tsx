@@ -53,6 +53,7 @@ import { environmentShell } from "./state/shell";
 import { OverlayPortalHost } from "./components/ui/OverlayPortal";
 import { shouldHandleAppLink, restoreDraftLinkState } from "./lib/appLinking";
 import { installLateActivityUnsettle } from "./features/threads/lateActivityUnsettle";
+import { installThreadAuthorProbe } from "./features/threads/messageAuthors";
 import { startVoiceOutbox } from "./features/voice-input/voiceOutboxRuntime";
 import { hasCloudPublicConfig } from "./features/cloud/publicConfig";
 import { takeScheduledTaskNewLink } from "./features/settings/scheduled-task-editor-state";
@@ -195,6 +196,7 @@ const appServiceDisposers = [
   installPermissionUpdateNotice(),
   installThreadOutboxDelivery(),
   installLateActivityUnsettle(),
+  installThreadAuthorProbe(),
   installComposerAttachmentUploads(),
   startIncomingShareInbox(),
   installAgentNotificationNavigation(linkToAppPath),

@@ -830,6 +830,71 @@ describe("buildThreadListV2ListItems", () => {
     expect(threadJumpTarget(items, "thread.jump.2")?.id).toBe("settled");
     expect(threadJumpTarget(items, "thread.jump.3")).toBeNull();
   });
+
+  it("splits the inbox into a shelf per author and one for threads written together", () => {
+    const shelfOf: Record<string, string> = { gerrit: "person:gerrit", both: "together" };
+    const build = (collapsed: ReadonlyArray<string>) => {
+      const authorLayout = buildThreadListV2Items({
+        threads: ["nobody", "gerrit", "both", "pinned", "settled"].map((id) =>
+          makeThread({
+            id: ThreadId.make(id),
+            title: id,
+            ...(id === "pinned" ? { pinnedAt: NOW } : {}),
+            ...(id === "settled" ? { settledOverride: "settled" as const, settledAt: NOW } : {}),
+          }),
+        ),
+        environmentId: null,
+        searchQuery: "",
+        now: NOW,
+        authorShelves: [
+          { key: "person:gerrit", label: "Gerrit" },
+          { key: "person:nils", label: "Nils" },
+          { key: "together", label: "Together" },
+        ],
+        authorShelfOf: (thread) => shelfOf[thread.id] ?? null,
+        collapsedAuthorShelves: new Set(collapsed),
+      });
+      return buildThreadListV2ListItems({
+        items: authorLayout.items,
+        pendingTasks: [],
+        authorShelves: authorLayout.authorShelves,
+        settledCount: authorLayout.settledCount,
+        settledShelfHeaderIndex: authorLayout.settledShelfHeaderIndex,
+        moveAvailability: new Map(
+          authorLayout.items.map((item) => [
+            `${item.thread.environmentId}:${item.thread.id}`,
+            { canMoveUp: true, canMoveDown: true },
+          ]),
+        ),
+      }).map((item) =>
+        item.type === "v2-thread"
+          ? `${item.item.thread.id}${item.canMoveUp ? "" : " (fixed)"}`
+          : item.type === "v2-author-shelf"
+            ? `${item.label} ${item.count}${item.expanded ? "" : " closed"}`
+            : item.type,
+      );
+    };
+
+    expect(build([])).toEqual([
+      "pinned",
+      "nobody (fixed)",
+      "Gerrit 1",
+      "gerrit (fixed)",
+      "Together 1",
+      "both (fixed)",
+      "v2-settled-shelf",
+      "settled (fixed)",
+    ]);
+    expect(build(["together"])).toEqual([
+      "pinned",
+      "nobody (fixed)",
+      "Gerrit 1",
+      "gerrit (fixed)",
+      "Together 1 closed",
+      "v2-settled-shelf",
+      "settled (fixed)",
+    ]);
+  });
 });
 
 describe("pending mobile thread moves", () => {

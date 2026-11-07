@@ -12,6 +12,7 @@ import {
   threadListInboxReturns,
   threadListV2LayoutTime,
 } from "./threadListV2";
+import { useThreadAuthorShelfOf } from "./messageAuthors";
 import { computeThreadMoveAvailability } from "./threadOrder";
 
 /**
@@ -64,9 +65,12 @@ export function useThreadListV2(input: {
   readonly workingShelfExpanded: boolean;
   readonly snoozedShelfExpanded: boolean;
   readonly settledShelfExpanded: boolean;
+  readonly authorShelves?: LayoutInput["authorShelves"];
+  readonly collapsedAuthorShelves?: ReadonlySet<string>;
   readonly selectedThreadKey: string | null;
 }) {
   const { threads, workingShelfEnabled } = input;
+  const authorShelfOf = useThreadAuthorShelfOf();
   const layoutTime = useMemo(
     () => threadListV2LayoutTime({ threads, now: input.now, searchQuery: input.searchQuery }),
     [threads, input.now, input.searchQuery],
@@ -153,6 +157,9 @@ export function useThreadListV2(input: {
         settledShelfExpanded: input.settledShelfExpanded,
         selectedThreadKey: input.selectedThreadKey,
         isListedSettled: isListed,
+        authorShelves: input.authorShelves,
+        authorShelfOf,
+        collapsedAuthorShelves: input.collapsedAuthorShelves,
         unloadedSettledCount: unloadedCount(
           threads.filter(
             (thread) =>
@@ -187,6 +194,9 @@ export function useThreadListV2(input: {
       isListed,
       unloadedCount,
       scopes,
+      input.authorShelves,
+      authorShelfOf,
+      input.collapsedAuthorShelves,
     ],
   );
   useOlderSettledShelfGrowth(olderSettledShelf, layout.listedSettledThreads);
@@ -214,6 +224,7 @@ export function useThreadListV2(input: {
       buildThreadListV2ListItems({
         items: layout.items,
         pendingTasks,
+        authorShelves: layout.authorShelves,
         workingCount: layout.workingCount,
         workingShelfExpanded: input.workingShelfExpanded,
         workingShelfHeaderIndex: layout.workingShelfHeaderIndex,

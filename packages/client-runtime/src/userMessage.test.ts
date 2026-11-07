@@ -7,8 +7,9 @@ import {
   resolveUserMessageFileCards,
   resolveUserMessageGrouping,
   resolveUserMessagePresentation,
-  stripVoiceMessagePrefix,
+  stripMessageMarker,
   voiceMessagePrefix,
+  withMessageAuthor,
 } from "./userMessage.ts";
 
 describe("resolveUserMessageGrouping", () => {
@@ -180,13 +181,35 @@ describe("resolveUserMessagePresentation", () => {
       attribution: null,
       scheduledTaskId: undefined,
       voice: true,
+      author: "Nils",
     });
-    expect(stripVoiceMessagePrefix(text)).toBe("Bitte die Tests ergaenzen");
+    expect(stripMessageMarker(text)).toBe("Bitte die Tests ergaenzen");
+  });
+
+  it("names who typed a message for the agent and hides the marker from people", () => {
+    const text = withMessageAuthor("Bitte deployen", " Gerrit\n");
+    expect(text).toBe("[Message from Gerrit]\n\nBitte deployen");
+    expect(resolveUserMessagePresentation({ role: "user", createdBy: "user", text })).toEqual({
+      text: "Bitte deployen",
+      attribution: null,
+      scheduledTaskId: undefined,
+      author: "Gerrit",
+    });
+    expect(withMessageAuthor(text, "Nils")).toBe(text);
+    expect(withMessageAuthor(voiceMessagePrefix("Nils"), "Gerrit")).toBe(voiceMessagePrefix("Nils"));
+    expect(withMessageAuthor("Bitte deployen", "  ")).toBe("Bitte deployen");
+    expect(withMessageAuthor("/compact", "Nils")).toBe("/compact");
+    expect(
+      resolveUserMessagePresentation({
+        role: "user",
+        text: withMessageAuthor(ATTACHMENT_ONLY_BOOTSTRAP_PROMPT, "Nils"),
+      }),
+    ).toEqual({ text: "", attribution: null, scheduledTaskId: undefined, author: "Nils" });
   });
 
   it("keeps a message that only mentions the marker", () => {
     const text = "[Voice message from Nils] steht jetzt am Anfang";
-    expect(stripVoiceMessagePrefix(text)).toBe(text);
+    expect(stripMessageMarker(text)).toBe(text);
     expect(resolveUserMessagePresentation({ role: "user", createdBy: "user", text }).voice).toBe(
       undefined,
     );
