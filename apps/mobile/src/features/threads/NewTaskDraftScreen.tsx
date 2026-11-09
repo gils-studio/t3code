@@ -604,7 +604,7 @@ export function NewTaskDraftScreen(props: {
       !modelSelection ||
       (initialMessageText.length === 0 && draft.attachments.length === 0 && !voice) ||
       flow.submitting ||
-      (workspaceMode === "worktree" && !selectedBranchName)
+      (workspaceMode === "worktree" && !selectedBranchName && environmentConnected)
     ) {
       return null;
     }
@@ -714,7 +714,10 @@ export function NewTaskDraftScreen(props: {
         ? "Wait for the project clone to finish."
         : flow.submitting
           ? "Starting the thread…"
-          : flow.workspaceMode === "worktree" && (!flow.selectedBranchName || !flow.isGitRepoKnown)
+          : // Offline the task is queued and the outbox picks the base when it leaves.
+            environmentConnected &&
+              flow.workspaceMode === "worktree" &&
+              (!flow.selectedBranchName || !flow.isGitRepoKnown)
             ? "Choose a base branch before creating a worktree."
             : null
       : "Wait for shared content to finish importing.";

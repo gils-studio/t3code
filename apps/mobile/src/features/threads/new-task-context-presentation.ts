@@ -112,6 +112,23 @@ export function filterNewTaskBranches<T extends { readonly name: string }>(
     : branches.filter((branch) => branch.name.toLowerCase().includes(query));
 }
 
+type WorkspaceBranchRef = {
+  readonly name: string;
+  readonly current: boolean;
+  readonly isDefault: boolean;
+  readonly isRemote?: boolean;
+  readonly worktreePath?: string | null;
+};
+
+/** The base a worktree gets when nobody chose one. */
+export function defaultWorktreeBase(branches: ReadonlyArray<WorkspaceBranchRef>): string | null {
+  // The default may only exist as origin/<default>, so search remote refs too.
+  const base =
+    branches.find((branch) => branch.isDefault) ??
+    branches.find((branch) => !branch.isRemote && branch.current);
+  return base?.name ?? null;
+}
+
 /**
  * A worktree with no chosen base starts from the default branch, and a local
  * selection the user just switched to follows the current checkout until refs
@@ -120,26 +137,16 @@ export function filterNewTaskBranches<T extends { readonly name: string }>(
  */
 export function fillNewTaskWorkspaceBranch(input: {
   readonly selection: ComposerDraftWorkspaceSelection;
-  readonly branches: ReadonlyArray<{
-    readonly name: string;
-    readonly current: boolean;
-    readonly isDefault: boolean;
-    readonly isRemote?: boolean;
-    readonly worktreePath?: string | null;
-  }>;
+  readonly branches: ReadonlyArray<WorkspaceBranchRef>;
   readonly projectCwd: string | null;
   readonly worktreeDefaultSettled: boolean;
 }): ComposerDraftWorkspaceSelection {
   const { selection } = input;
   if (selection.branch !== null) return selection;
   if (selection.mode === "worktree") {
-    // The default may only exist as origin/<default>, so search remote refs too.
-    const base =
-      input.branches.find((branch) => branch.isDefault) ??
-      input.branches.find((branch) => !branch.isRemote && branch.current) ??
-      null;
+    const base = defaultWorktreeBase(input.branches);
     return input.worktreeDefaultSettled && base
-      ? { ...selection, branch: base.name, worktreePath: null }
+      ? { ...selection, branch: base, worktreePath: null }
       : selection;
   }
   if (!selection.followsCurrentCheckout || input.projectCwd === null) return selection;
