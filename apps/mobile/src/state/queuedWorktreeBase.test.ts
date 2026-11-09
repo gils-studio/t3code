@@ -12,17 +12,17 @@ const offlineWorktree: QueuedThreadCreation = {
   branch: null,
   worktreePath: null,
 };
-const ref = (name: string, flags: { current?: boolean; isDefault?: boolean; isRemote?: boolean }) => ({
+const ref = (
+  name: string,
+  flags: { current?: boolean; isDefault?: boolean; isRemote?: boolean },
+) => ({
   name,
   current: flags.current ?? false,
   isDefault: flags.isDefault ?? false,
   ...(flags.isRemote ? { isRemote: true } : {}),
   worktreePath: null,
 });
-const listing = (
-  refs: VcsListRefsResult["refs"],
-  isRepo = true,
-): VcsListRefsResult => ({
+const listing = (refs: VcsListRefsResult["refs"], isRepo = true): VcsListRefsResult => ({
   refs,
   isRepo,
   hasPrimaryRemote: true,
