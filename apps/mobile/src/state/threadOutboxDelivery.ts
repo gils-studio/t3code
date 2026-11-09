@@ -51,6 +51,7 @@ import {
 import { environmentProjects } from "./projects";
 import { environmentServerConfigsAtom, serverEnvironment } from "./server";
 import { gitEnvironment } from "./git";
+import { resolveQueuedWorktreeBase } from "./queuedWorktreeBase";
 import { environmentSession, readEnvironmentScope, sessionHasScope } from "./session";
 import {
   confirmThreadOutboxMessageQueued,
@@ -73,6 +74,7 @@ import {
   type ThreadOutboxFailureAction,
 } from "./thread-outbox-model";
 import { environmentThreadShells, threadEnvironment, threadFamilies } from "./threads";
+import { vcsEnvironment } from "./vcs";
 import {
   appendComposerDraftAttachments,
   composerDraftsAtom,
@@ -1021,7 +1023,26 @@ export function createThreadOutboxDelivery(): {
       currentConfig.providers,
     );
     if (!hasAccess()) return true;
-    let workspace = creation;
+    const based = await resolveQueuedWorktreeBase({
+      creation,
+      environmentId: queuedMessage.environmentId,
+      projectCwd,
+      readRefs: (request) => runDeliveryCommand(vcsEnvironment.readRefs, request),
+    });
+    if (!isQueuedMessagePayloadCurrent(persistedMessage, deliveryRevision) || !hasAccess())
+      return true;
+    const baseFailure = reportCommandFailure(queuedMessage, based, "start-turn");
+    if (baseFailure?.action === "retry") return false;
+    if (baseFailure?.action === "restore")
+      return restoreQueuedMessage(persistedMessage, baseFailure.message);
+    if (!AsyncResult.isSuccess(based)) return false;
+    if (based.value === null) {
+      return restoreQueuedMessage(
+        persistedMessage,
+        "Choose a base branch before creating a worktree.",
+      );
+    }
+    let workspace = based.value;
     if (creation.pullRequestReference) {
       const checkout = await runDeliveryCommand(gitEnvironment.preparePullRequestThread, {
         environmentId: queuedMessage.environmentId,
