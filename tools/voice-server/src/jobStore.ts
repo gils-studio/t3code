@@ -28,6 +28,8 @@ export type Job = JobMeta & {
   readonly attempts: number;
   readonly nextAttemptAt: number;
   readonly lastError: string | null;
+  /** Set by a retry: the speaker wants the words even where whisper was guessing. */
+  readonly acceptUnclear?: boolean;
   /** True once a send started, so a restart checks the thread before sending again. */
   readonly sendStarted: boolean;
   readonly createdAt: number;

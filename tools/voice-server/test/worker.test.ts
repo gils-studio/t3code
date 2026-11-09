@@ -4,9 +4,20 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeTest from "node:test";
 
-import { foundNoSpeech, transcriptionTimeoutMillis, voiceMessagePrefix } from "../src/adapters.ts";
+import {
+  foundNoSpeech,
+  soundsUnclear,
+  transcriptionTimeoutMillis,
+  voiceMessagePrefix,
+} from "../src/adapters.ts";
 import { JobStore, type JobMeta } from "../src/jobStore.ts";
-import { composeMessage, Worker, type ThreadSender, type Transcriber } from "../src/worker.ts";
+import {
+  composeMessage,
+  UnclearRecordingError,
+  Worker,
+  type ThreadSender,
+  type Transcriber,
+} from "../src/worker.ts";
 
 const meta = (overrides: Partial<JobMeta> = {}): JobMeta => ({
   mode: "send",
@@ -132,6 +143,19 @@ NodeTest.test("transcription that keeps failing ends as failed with the audio ke
   await NodeFSP.access(store.audioPath("job-00004"));
 });
 
+NodeTest.test("an unclear recording fails at once instead of sending guessed words", async () => {
+  const sent: string[] = [];
+  const { store, worker, add } = await harness(
+    { transcribe: async () => Promise.reject(new UnclearRecordingError()) },
+    sender(sent),
+  );
+  await add("job-unclear");
+  await worker.runNext();
+  NodeAssert.equal(store.get("job-unclear")?.status, "failed");
+  NodeAssert.match(store.get("job-unclear")?.lastError ?? "", /Retry to transcribe it anyway/);
+  NodeAssert.deepEqual(sent, []);
+});
+
 NodeTest.test("sending retries for as long as T3 is down", async () => {
   let online = false;
   const sent: string[] = [];
@@ -214,6 +238,21 @@ NodeTest.test("only a clear zero from the VAD counts as silence", () => {
   NodeAssert.equal(foundNoSpeech("Detected 0 speech segments:"), true);
   NodeAssert.equal(foundNoSpeech("Detected 3 speech segments:"), false);
   NodeAssert.equal(foundNoSpeech(""), false);
+});
+
+NodeTest.test("only recordings whisper mostly guessed count as unclear", () => {
+  const segment = (avg_logprob: number, seconds = 10) => ({
+    start: 0,
+    end: seconds,
+    text: "x",
+    avg_logprob,
+  });
+  // Scores of real recordings: a muffled phone mic, then clear speech, short and long.
+  NodeAssert.equal(soundsUnclear([segment(-0.4), segment(-1.25)]), true);
+  NodeAssert.equal(soundsUnclear([segment(-0.47, 2)]), false);
+  NodeAssert.equal(soundsUnclear([segment(-0.1), segment(-0.64)]), false);
+  NodeAssert.equal(soundsUnclear([segment(-0.2, 50), segment(-1.4, 2)]), false);
+  NodeAssert.equal(soundsUnclear([{ start: 0, end: 5, text: "cli" }]), false);
 });
 
 NodeTest.test("typed draft text goes ahead of the transcript", () => {

@@ -5,8 +5,8 @@ import * as NodePath from "node:path";
 import type { Config } from "./config.ts";
 import type { Job, JobStore } from "./jobStore.ts";
 import { correctTranscript, readVocabulary } from "./vocabulary.ts";
-import type { WhisperServer } from "./whisperServer.ts";
-import type { ThreadSender, Transcriber } from "./worker.ts";
+import type { Recognition, SpeechSegment, WhisperServer } from "./whisperServer.ts";
+import { type ThreadSender, type Transcriber, UnclearRecordingError } from "./worker.ts";
 
 type RunOptions = {
   readonly timeoutMillis: number;
@@ -94,6 +94,23 @@ export async function isSilent(config: Config, wav: string): Promise<boolean> {
   return foundNoSpeech(stdout);
 }
 
+/** Thresholds from real recordings: a muffled or distant mic sat below both, clear speech above. */
+const UNCLEAR_MEAN_LOGPROB = -0.5;
+const UNCLEAR_WORST_SEGMENT_LOGPROB = -0.9;
+
+/** Whisper always writes something; this catches the words it was guessing. */
+export function soundsUnclear(segments: ReadonlyArray<SpeechSegment>): boolean {
+  const scored = segments.flatMap(({ start, end, avg_logprob }) =>
+    avg_logprob === undefined ? [] : [{ seconds: end - start, logprob: avg_logprob }],
+  );
+  const seconds = scored.reduce((sum, segment) => sum + segment.seconds, 0);
+  if (seconds <= 0) return false;
+  const mean =
+    scored.reduce((sum, segment) => sum + segment.logprob * segment.seconds, 0) / seconds;
+  const worst = Math.min(...scored.map((segment) => segment.logprob));
+  return mean < UNCLEAR_MEAN_LOGPROB && worst < UNCLEAR_WORST_SEGMENT_LOGPROB;
+}
+
 /** Lines are whisper segments: they keep their own leading space and can split a word. */
 const singleLine = (text: string) =>
   text
@@ -161,20 +178,23 @@ export class WhisperTranscriber implements Transcriber {
       // Generous: a slow run is fine, only a hung process must not block the queue forever.
       const timeoutMillis = transcriptionTimeoutMillis(audioSeconds);
       const startedAt = Date.now();
-      const [silent, text] = await Promise.all([
+      const [silent, recognition] = await Promise.all([
         isSilent(this.config, wav),
-        this.server.recognize(wav, job.language, { timeoutMillis }).then(
-          (result) => result.text,
-          (error: unknown) => {
+        this.server
+          .recognize(wav, job.language, { timeoutMillis })
+          .catch(async (error: unknown): Promise<Recognition> => {
             this.log(`whisper-server failed, using the CLI: ${String(error)}`);
-            return this.runCli(job, wav, timeoutMillis);
-          },
-        ),
+            return { text: await this.runCli(job, wav, timeoutMillis), segments: [] };
+          }),
       ]);
       this.log(
         `transcribed ${Math.round(audioSeconds)} s of audio in ${Date.now() - startedAt} ms`,
       );
-      return silent ? "" : correctTranscript(singleLine(text));
+      if (silent) return "";
+      if (!job.acceptUnclear && soundsUnclear(recognition.segments)) {
+        throw new UnclearRecordingError();
+      }
+      return correctTranscript(singleLine(recognition.text));
     } finally {
       await NodeFSP.rm(wav, { force: true });
     }
