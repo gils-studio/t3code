@@ -10,6 +10,7 @@ export type SpeechSegment = {
   readonly start: number;
   readonly end: number;
   readonly text: string;
+  readonly avg_logprob?: number;
 };
 
 export type Recognition = {

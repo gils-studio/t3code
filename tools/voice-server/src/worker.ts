@@ -25,6 +25,14 @@ const BASE_RETRY_MILLIS = 5_000;
 const MAX_RETRY_MILLIS = 5 * 60_000;
 const DEFAULT_RETENTION_MILLIS = 14 * 24 * 60 * 60_000;
 
+/** The same audio would come out the same way, so this failure is final and not retried. */
+export class UnclearRecordingError extends Error {
+  constructor() {
+    super("Too quiet or noisy to understand. Retry to transcribe it anyway.");
+    this.name = "UnclearRecordingError";
+  }
+}
+
 export const retryDelayMillis = (attempts: number): number =>
   Math.min(MAX_RETRY_MILLIS, BASE_RETRY_MILLIS * 2 ** Math.max(0, attempts - 1));
 
@@ -135,13 +143,15 @@ export class Worker {
       transcript = withoutNoiseMarkers(await this.options.transcriber.transcribe(started));
     } catch (error) {
       const attempts = started.attempts + 1;
+      const final =
+        error instanceof UnclearRecordingError || attempts >= MAX_TRANSCRIPTION_ATTEMPTS;
       this.options.log?.(`transcription failed for ${job.id}: ${String(error)}`);
       await store.update(
         job.id,
         {
-          status: attempts >= MAX_TRANSCRIPTION_ATTEMPTS ? "failed" : "queued",
+          status: final ? "failed" : "queued",
           attempts,
-          lastError: String(error),
+          lastError: error instanceof Error ? error.message : String(error),
           nextAttemptAt: this.now() + retryDelayMillis(attempts),
         },
         this.now(),

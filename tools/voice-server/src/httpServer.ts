@@ -260,7 +260,7 @@ export function createHttpServer(options: HttpOptions): NodeHttp.Server {
     if (request.method === "POST" && action === "/retry" && job.status === "failed") {
       const queued = await store.update(
         id,
-        { status: "queued", attempts: 0, nextAttemptAt: 0 },
+        { status: "queued", attempts: 0, nextAttemptAt: 0, acceptUnclear: true },
         now,
       );
       options.onJobCreated();
