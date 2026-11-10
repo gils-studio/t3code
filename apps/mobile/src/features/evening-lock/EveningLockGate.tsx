@@ -38,8 +38,14 @@ function useLockClock(enabled: boolean): Date {
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- follows the wall clock so the lock starts and ends on time, also after the app returns from the background
   useEffect(() => {
     if (!enabled) return;
-    const refresh = () => setNow(new Date());
-    const timer = setTimeout(refresh, nextEveningLockBoundary(new Date()).getTime() - Date.now());
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = () => {
+      clearTimeout(timer);
+      const current = new Date();
+      setNow(current);
+      timer = setTimeout(refresh, nextEveningLockBoundary(current).getTime() - Date.now());
+    };
+    refresh();
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active") refresh();
     });
@@ -47,7 +53,7 @@ function useLockClock(enabled: boolean): Date {
       clearTimeout(timer);
       subscription.remove();
     };
-  }, [enabled, now]);
+  }, [enabled]);
 
   return now;
 }
