@@ -97,6 +97,7 @@ import {
 import { pruneNewTaskFlowStates } from "./features/threads/new-task-flow-state";
 import { pruneNewTaskBranchCheckouts } from "./features/threads/NewTaskDraftRouteScreen";
 import { installAppUpdateChecks } from "./features/updates/app-updates";
+import { EveningLockGate } from "./features/evening-lock/EveningLockGate";
 
 import "../global.css";
 
@@ -244,21 +245,23 @@ function AppContent() {
           <SafeAreaProvider>
             <StatusBar barStyle={themeAppearance === "dark" ? "light-content" : "dark-content"} />
             {/* native-stack needs the theme's dark flag to select dark native headers. */}
-            <GlobalVoiceInputControl>
-              <NativeLayoutMetricsProvider>
-                <Navigation
-                  ref={attachRootNavigation}
-                  linking={appLinking}
-                  onReady={handleNavigationReady}
-                  theme={navigationTheme}
-                  onStateChange={handleNavigationStateChange}
-                />
-                <Dialog.Host />
-                <ThreadArrangementHost />
-                <ProjectChipIconRasterizer />
-              </NativeLayoutMetricsProvider>
-            </GlobalVoiceInputControl>
-            <OverlayPortalHost />
+            <EveningLockGate>
+              <GlobalVoiceInputControl>
+                <NativeLayoutMetricsProvider>
+                  <Navigation
+                    ref={attachRootNavigation}
+                    linking={appLinking}
+                    onReady={handleNavigationReady}
+                    theme={navigationTheme}
+                    onStateChange={handleNavigationStateChange}
+                  />
+                  <Dialog.Host />
+                  <ThreadArrangementHost />
+                  <ProjectChipIconRasterizer />
+                </NativeLayoutMetricsProvider>
+              </GlobalVoiceInputControl>
+              <OverlayPortalHost />
+            </EveningLockGate>
           </SafeAreaProvider>
         </KeyboardProvider>
       </GestureHandlerRootView>
