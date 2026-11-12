@@ -15,7 +15,8 @@ EXPECTED_SIGNER=fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}" ANDROID_SDK_ROOT="${ANDROID_HOME:-$HOME/Android/Sdk}"
 # Gradle 8 with this React Native version needs JDK 17.
 export JAVA_HOME="${T3_APK_JAVA_HOME:-$HOME/fleet-tools/jdk-17.0.21+9}"
-export PATH="$JAVA_HOME/bin:$PATH"
+# The Expo config is TypeScript that only Node 24 loads.
+export PATH="$JAVA_HOME/bin:${T3_APK_NODE_BIN:-$HOME/fleet/tools/node24/bin}:$PATH"
 export NODE_OPTIONS=--max-old-space-size=4096
 
 if [ ! -d "$WORK/.git" ]; then
@@ -27,6 +28,7 @@ git checkout --quiet --force --detach FETCH_HEAD
 git clean -fdxq -e node_modules
 COMMIT=$(git rev-parse --short HEAD)
 git log -1 --format='BUILD %h %cI %s'
+node -v
 
 [ -f .env ] || cp .env.example .env
 PNPM_PREFIX="$HOME/fleet/tools/pnpm12"
