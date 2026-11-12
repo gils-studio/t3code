@@ -1265,7 +1265,8 @@ function ThreadDetailBody(
     // Waits behind an open approval or question instead of answering it.
     const requestPending =
       props.activePendingApprovals.length > 0 || props.activePendingUserInput !== null;
-    const messageId = await props.onSendMessage(followUp ?? (requestPending ? "queue" : undefined), () => {
+    const action = followUp ?? (requestPending ? "queue" : undefined);
+    const messageId = await props.onSendMessage(action, () => {
       if (
         scope.aborted ||
         Platform.OS !== "ios" ||
