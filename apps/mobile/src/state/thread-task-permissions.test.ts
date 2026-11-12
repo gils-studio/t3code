@@ -32,7 +32,7 @@ const state = vi.hoisted(() => ({
   serverConfig: null as ServerConfig | null,
   projection: null as OrchestrationV2ThreadProjection | null,
   pendingRequests: { approvals: [], userInputs: [] } as PendingThreadRequests,
-  enqueue: vi.fn(async () => undefined),
+  enqueue: vi.fn(async (_message: unknown) => undefined),
   clearDraft: vi.fn(),
   approve: vi.fn(),
   answer: vi.fn(),
