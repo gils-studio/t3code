@@ -172,7 +172,9 @@ const voiceInputAtom = Atom.make((get) => {
 
 /** Whether a dictation runs anywhere in the app, for work that must not cut into it. */
 export function isVoiceInputBusy(): boolean {
-  return voiceInputBlocksSubmission(appAtomRegistry.get(voiceInputAtom).session.getSnapshot().state);
+  return voiceInputBlocksSubmission(
+    appAtomRegistry.get(voiceInputAtom).session.getSnapshot().state,
+  );
 }
 
 export function useGlobalVoiceInput() {
