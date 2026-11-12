@@ -245,11 +245,7 @@ export interface ThreadComposerProps {
   readonly onStopThread: () => void;
   /** Present while the thread's queue is held. */
   readonly onResumeQueue: (() => Promise<void>) | null;
-  /** `stillSendable` reports whether the draft is unchanged after any wait before sending. */
-  readonly onSendMessage: (
-    followUp?: ActiveTurnComposerAction,
-    stillSendable?: () => boolean,
-  ) => Promise<MessageId | null>;
+  readonly onSendMessage: (followUp?: ActiveTurnComposerAction) => Promise<MessageId | null>;
   readonly onShowUsageLimits: (report: UsageLimitsReport | null) => void;
   readonly canSwitchProvider: boolean;
   readonly onUpdateInteractionMode?: (interactionMode: ProviderInteractionMode) => void;
@@ -686,20 +682,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     const threadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
     if (inFlightThreadIdsRef.current.has(threadKey)) return;
     inFlightThreadIdsRef.current.add(threadKey);
-    const draftAtSend = getComposerDraftSnapshot(composerDraftKey);
-    const stillSendable = () => {
-      const draft = getComposerDraftSnapshot(composerDraftKey);
-      return (
-        pendingPastedTextAttachmentCountRef.current === 0 &&
-        pendingNativeImagePasteCountRef.current === 0 &&
-        draft.text === draftAtSend.text &&
-        draft.attachments.length === draftAtSend.attachments.length &&
-        draft.attachments.every(
-          (attachment, index) => attachment.id === draftAtSend.attachments[index]?.id,
-        )
-      );
-    };
-    const sent = await settlePromise(() => onSendMessage(followUp, stillSendable));
+    const sent = await settlePromise(() => onSendMessage(followUp));
     inFlightThreadIdsRef.current.delete(threadKey);
     if (AsyncResult.isFailure(sent)) {
       console.error("[composer] send failed", squashAtomCommandFailure(sent));
