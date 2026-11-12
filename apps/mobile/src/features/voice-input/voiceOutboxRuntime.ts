@@ -7,7 +7,7 @@ import { CommandId, MessageId, type EnvironmentId, type ThreadId } from "@t3tool
 
 import { makeQueuedMessageMetadata } from "../../lib/commandMetadata";
 import { uuidv4 } from "../../lib/uuid";
-import { voiceUploadSupported } from "../../native/voiceUpload";
+import { showVoiceDelivery, voiceUploadSupported } from "../../native/voiceUpload";
 import {
   flushComposerDrafts,
   getComposerDraftSnapshot,
@@ -31,7 +31,13 @@ import {
   type VoiceServerClient,
 } from "./voiceOutbox";
 import { voiceOutboxFileStore } from "./voiceOutboxStore";
-import { VOICE_MESSAGE_LABEL, voiceItemText, voicePreviewText } from "./voiceThreadMessages";
+import {
+  threadVoiceStatus,
+  VOICE_MESSAGE_LABEL,
+  voiceDeliveryNotice,
+  voiceItemText,
+  voicePreviewText,
+} from "./voiceThreadMessages";
 import {
   createVoiceServerClient,
   deleteVoiceServerConfig,
@@ -46,6 +52,7 @@ import {
 let server: VoiceServerConfig | null = null;
 let client: (VoiceServerClient & VoiceLiveClient) | null = null;
 let started = false;
+let deliveryKey: string | null = null;
 const serverListeners = new Set<() => void>();
 const draftSubmitListeners = new Set<(ownerKey: string) => void>();
 
@@ -149,6 +156,12 @@ export const useVoiceServer = () => useSyncExternalStore(subscribeVoiceServer, g
 
 export const useVoiceOutboxItems = () =>
   useSyncExternalStore(voiceOutbox.subscribe, voiceOutbox.getSnapshot);
+
+/** A primitive snapshot, so a chat row only renders again when its own status changes. */
+export const useThreadVoiceStatus = (threadKey: string) =>
+  useSyncExternalStore(voiceOutbox.subscribe, () =>
+    threadVoiceStatus(voiceOutbox.getSnapshot(), threadKey),
+  );
 
 export const useVoiceLiveText = () =>
   useSyncExternalStore(voiceLivePreview.subscribe, voiceLivePreview.getText);
@@ -283,12 +296,25 @@ function handlePairLink(link: string | null): void {
   );
 }
 
+/** Android only starts the service from the foreground, so a refused start is retried there. */
+function syncVoiceDelivery(force: boolean): void {
+  const notice = voiceDeliveryNotice(voiceOutbox.getSnapshot());
+  const key = notice ? `${notice.title}\n${notice.text}` : null;
+  if (!force && key === deliveryKey) return;
+  deliveryKey = key;
+  showVoiceDelivery(notice);
+}
+
 /** Runs at launch, not with the first composer: waiting recordings must not depend on navigation. */
 export function startVoiceOutbox(): void {
   if (started || !voiceUploadSupported) return;
   started = true;
   voiceOutbox.setForeground(AppState.currentState === "active");
-  AppState.addEventListener("change", (state) => voiceOutbox.setForeground(state === "active"));
+  voiceOutbox.subscribe(() => syncVoiceDelivery(false));
+  AppState.addEventListener("change", (state) => {
+    voiceOutbox.setForeground(state === "active");
+    if (state === "active") syncVoiceDelivery(true);
+  });
   Linking.addEventListener("url", ({ url }) => handlePairLink(url));
   void Linking.getInitialURL().then(handlePairLink);
   void readVoiceServerConfig()

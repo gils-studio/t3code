@@ -2,4 +2,16 @@
     xmlns:tools="http://schemas.android.com/tools">
   <!-- Recognition is gated to API 31; older devices retain the rest of the app. -->
   <uses-sdk tools:overrideLibrary="com.google.mlkit.genai.speechrecognition,com.google.mlkit.genai.common" />
+
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+  <application>
+    <service
+        android:name="expo.modules.t3voicetranscription.VoiceDeliveryService"
+        android:exported="false"
+        android:foregroundServiceType="dataSync" />
+  </application>
 </manifest>

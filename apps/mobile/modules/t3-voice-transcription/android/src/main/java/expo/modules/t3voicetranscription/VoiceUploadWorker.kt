@@ -6,8 +6,10 @@ import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
+import androidx.work.ForegroundInfo
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
@@ -26,6 +28,7 @@ private const val KEY_TOKEN = "token"
 private const val CONNECT_TIMEOUT_MS = 30_000
 private const val READ_TIMEOUT_MS = 120_000
 private const val NEWLINE = 10
+private const val FOREGROUND_NOTIFICATION_ID = 0x7601
 
 /** Scheduled by the system, so an upload continues after the app is closed or killed. */
 class VoiceUploadWorker(context: Context, parameters: WorkerParameters) :
@@ -42,6 +45,13 @@ class VoiceUploadWorker(context: Context, parameters: WorkerParameters) :
         Result.retry()
       }
     }
+
+  /** Expedited work runs as a foreground service before Android 12, which needs a notification. */
+  override suspend fun getForegroundInfo(): ForegroundInfo =
+    ForegroundInfo(
+      FOREGROUND_NOTIFICATION_ID,
+      voiceDeliveryNotification(applicationContext, "Sending voice message", "Uploading the recording")
+    )
 
   /** A rejected upload retries too: the audio must stay deliverable until it is on the server. */
   private fun upload(audio: File, meta: File): Boolean {
@@ -80,6 +90,8 @@ class VoiceUploadWorker(context: Context, parameters: WorkerParameters) :
           .setConstraints(
             Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
           )
+          // Starts now even with the app put away; without quota it still runs as soon as allowed.
+          .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
           .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.SECONDS)
           .setInputData(
             workDataOf(
