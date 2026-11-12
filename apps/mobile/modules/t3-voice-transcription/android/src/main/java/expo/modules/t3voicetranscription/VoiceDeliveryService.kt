@@ -65,10 +65,16 @@ class VoiceDeliveryService : Service() {
         intent?.getStringExtra(EXTRA_TITLE) ?: "Sending voice message",
         intent?.getStringExtra(EXTRA_TEXT) ?: ""
       )
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-      startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-    } else {
-      startForeground(NOTIFICATION_ID, notification)
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+      } else {
+        startForeground(NOTIFICATION_ID, notification)
+      }
+    } catch (_: IllegalStateException) {
+      // The app went to the background between the start and now; the next foreground retries.
+      stopSelf()
+      return START_NOT_STICKY
     }
     if (wakeLock == null) {
       wakeLock =
