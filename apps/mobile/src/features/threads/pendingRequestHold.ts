@@ -4,12 +4,12 @@ import {
 } from "@t3tools/client-runtime/voice-input";
 
 /**
- * A question replaces the composer, so it waits while the user is still
- * composing: a dictation into this composer runs, or the draft holds a
- * message that is not sent yet. Opening it by hand shows it over a draft,
- * never over a running dictation, whose controls it would hide.
+ * An agent's question or approval waits while the user is still composing: a
+ * dictation into this composer runs, or the draft holds a message that is not
+ * sent yet. Once opened (by hand or by showing up) it stays over a draft, but
+ * never covers a running dictation.
  */
-export function isPendingQuestionHeldBack(input: {
+export function isPendingRequestHeldBack(input: {
   readonly requestId: string | null;
   readonly openedRequestId: string | null;
   readonly composerKey: string | null;

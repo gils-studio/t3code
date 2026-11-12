@@ -1,7 +1,7 @@
 import type { VoiceInputPhase } from "@t3tools/client-runtime/voice-input";
 import { describe, expect, it } from "vite-plus/test";
 
-import { isPendingQuestionHeldBack } from "./pendingQuestionHold";
+import { isPendingRequestHeldBack } from "./pendingRequestHold";
 
 const base = {
   requestId: "request-1",
@@ -12,7 +12,7 @@ const base = {
 };
 const voice = (phase: VoiceInputPhase) => ({ phase, error: null, errorAction: null });
 
-describe("isPendingQuestionHeldBack", () => {
+describe("isPendingRequestHeldBack", () => {
   it.each([
     ["no question", { requestId: null, voiceOwnerKey: "thread:1" }, "recording", false],
     ["idle composer", {}, "idle", false],
@@ -36,7 +36,7 @@ describe("isPendingQuestionHeldBack", () => {
       true,
     ],
   ] as const)("%s", (_name, overrides, phase, expected) => {
-    expect(isPendingQuestionHeldBack({ ...base, ...overrides, voiceState: voice(phase) })).toBe(
+    expect(isPendingRequestHeldBack({ ...base, ...overrides, voiceState: voice(phase) })).toBe(
       expected,
     );
   });

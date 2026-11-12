@@ -505,10 +505,6 @@ export function useThreadComposerState() {
 
   const onSendMessage = async (
     followUpOverride?: ActiveTurnComposerAction,
-    beforeDispatch?: (
-      text: string,
-      hasAttachmentsOrContext: boolean,
-    ) => Promise<boolean | "responded">,
     onWillEnqueue?: () => void,
   ) => {
     if (
@@ -622,40 +618,12 @@ export function useThreadComposerState() {
       return null;
     }
 
-    if (beforeDispatch !== undefined) {
-      const response = await beforeDispatch(
-        text,
-        attachments.length > 0 || draft.context !== undefined,
-      );
-      if (!response) return null;
-      // A context paste still landing, or any draft or settings change while approvals were
-      // declined, means this snapshot is no longer what the user sent.
-      if (appAtomRegistry.get(composerContextImportsAtom)[threadKey]) return null;
-      const current = getComposerDraftSnapshot(threadKey);
-      if (
-        current.text !== draft.text ||
-        JSON.stringify(current.context) !== JSON.stringify(draft.context) ||
-        JSON.stringify(current.modelSelection) !== JSON.stringify(draft.modelSelection) ||
-        current.runtimeMode !== draft.runtimeMode ||
-        current.interactionMode !== draft.interactionMode ||
-        current.attachments.length !== attachments.length ||
-        current.attachments.some((attachment, index) => attachment.id !== attachments[index]?.id)
-      )
-        return null;
-      if (response === "responded") {
-        clearComposerDraftContent(threadKey);
-        return null;
-      }
-    }
-
     // Resolve at send time because outbox delivery may be delayed.
     // Steering uses "auto" so an ended turn queues a run instead of restoring the draft.
-    // An approval redirect must steer the waiting turn instead of queueing behind it.
-    const activeTurnDefault = beforeDispatch !== undefined ? "steer" : followUpBehavior;
     const followUpAction = resolveComposerDispatchMode({
       running: activeThreadBusy && canSteerActiveTurn,
-      alternateModifier: followUpOverride !== undefined && followUpOverride !== activeTurnDefault,
-      activeTurnDefault,
+      alternateModifier: followUpOverride !== undefined && followUpOverride !== followUpBehavior,
+      activeTurnDefault: followUpBehavior,
     });
     const setupRunning = [selectedThreadActivityRun?.status, selectedThreadRuntime?.status].some(
       (status) => status === "preparing" || status === "starting",
