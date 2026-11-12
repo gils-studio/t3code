@@ -5,6 +5,7 @@ import { AppState, View } from "react-native";
 
 import { EmptyState } from "../../components/ui/EmptyState";
 import { mobilePreferencesAtom } from "../../state/preferences";
+import { useGlobalVoiceInput } from "../voice-input/VoiceInputProvider";
 import {
   EVENING_LOCK_UNTIL_LABEL,
   isEveningLocked,
@@ -19,8 +20,10 @@ export function EveningLockGate(props: { readonly children: ReactNode }) {
     AsyncResult.isSuccess(preferences) &&
     isEveningLockedPerson(preferences.value.messageAuthorName);
   const now = useLockClock(applies);
+  const locked = applies && isEveningLocked(now);
+  const deferred = useDeferWhileDictating(locked);
 
-  if (!applies || !isEveningLocked(now)) return props.children;
+  if (!locked || deferred) return props.children;
   return (
     <View className="flex-1 items-center justify-center bg-screen">
       <EmptyState
@@ -30,6 +33,27 @@ export function EveningLockGate(props: { readonly children: ReactNode }) {
       />
     </View>
   );
+}
+
+/**
+ * A lock that starts during a dictation waits until the app is next left, so the
+ * dictated words can still be reviewed and sent.
+ */
+function useDeferWhileDictating(locked: boolean): boolean {
+  const { isBusy } = useGlobalVoiceInput();
+  const [deferred, setDeferred] = useState(false);
+  if (locked && isBusy && !deferred) setDeferred(true);
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- ends the deferral when the app goes to the background, an event outside React
+  useEffect(() => {
+    if (!deferred) return;
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "background") setDeferred(false);
+    });
+    return () => subscription.remove();
+  }, [deferred]);
+
+  return deferred;
 }
 
 function useLockClock(enabled: boolean): Date {
