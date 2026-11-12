@@ -373,6 +373,9 @@ async function applyDeferredAppUpdateInstall(
 }
 
 async function defaultConfirmInstallNow(): Promise<boolean> {
+  // The prompt would cover a running dictation and Install Now would end it; it installs on leaving instead.
+  const { isVoiceInputBusy } = await import("../voice-input/VoiceInputProvider");
+  if (isVoiceInputBusy()) return false;
   const Dialog = await import("../../components/ui/Dialog");
   return new Promise<boolean>((resolve) => {
     Dialog.alert(
@@ -401,6 +404,8 @@ async function defaultFlushPendingWrites(): Promise<void> {
 async function defaultIsSafeToRestartInBackground(): Promise<boolean> {
   const { isForegroundHandoffActive } = await import("../../lib/foreground-handoff");
   if (isForegroundHandoffActive()) return false;
+  const { isVoiceInputBusy } = await import("../voice-input/VoiceInputProvider");
+  if (isVoiceInputBusy()) return false;
   return AppState.currentState === "background";
 }
 

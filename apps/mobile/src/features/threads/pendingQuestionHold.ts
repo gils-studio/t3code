@@ -18,10 +18,16 @@ export function isPendingQuestionHeldBack(input: {
   readonly draftHasMessage: boolean;
 }): boolean {
   if (input.requestId === null) return false;
-  const dictatingHere =
-    input.composerKey !== null &&
-    input.voiceOwnerKey === input.composerKey &&
-    voiceInputBlocksSubmission(input.voiceState);
-  if (dictatingHere) return true;
+  if (isDictatingInto(input.composerKey, input.voiceOwnerKey, input.voiceState)) return true;
   return input.draftHasMessage && input.openedRequestId !== input.requestId;
+}
+
+export function isDictatingInto(
+  composerKey: string | null,
+  voiceOwnerKey: string | null,
+  voiceState: VoiceInputState,
+): boolean {
+  return (
+    composerKey !== null && voiceOwnerKey === composerKey && voiceInputBlocksSubmission(voiceState)
+  );
 }

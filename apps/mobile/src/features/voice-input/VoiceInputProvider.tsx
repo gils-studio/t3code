@@ -14,6 +14,7 @@ import {
   rememberMicrophones,
 } from "../../lib/microphonePriority";
 import { getLocalVoiceTranscriber } from "../../native/voiceTranscription";
+import { appAtomRegistry } from "../../state/atom-registry";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { getNativeShowcaseScene } from "../showcase/nativeShowcaseScene";
 import {
@@ -168,6 +169,11 @@ const voiceInputAtom = Atom.make((get) => {
   });
   return { session, audioLevels };
 }).pipe(Atom.keepAlive, Atom.withLabel("mobile:voice-input"));
+
+/** Whether a dictation runs anywhere in the app, for work that must not cut into it. */
+export function isVoiceInputBusy(): boolean {
+  return voiceInputBlocksSubmission(appAtomRegistry.get(voiceInputAtom).session.getSnapshot().state);
+}
 
 export function useGlobalVoiceInput() {
   const { session, audioLevels } = useAtomValue(voiceInputAtom);

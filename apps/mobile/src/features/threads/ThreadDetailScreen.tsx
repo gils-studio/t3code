@@ -181,7 +181,7 @@ import { ManagedRuntimeModeNotice } from "./ManagedRuntimeModeNotice";
 import { ComposerFeedback } from "./ComposerFeedback";
 import { ComposerUsageLimits } from "./ComposerUsageLimits";
 import { PendingUserInputCard } from "./PendingUserInputCard";
-import { isPendingQuestionHeldBack } from "./pendingQuestionHold";
+import { isDictatingInto, isPendingQuestionHeldBack } from "./pendingQuestionHold";
 import { ProviderSubagentBar } from "./ProviderSubagentBar";
 import { ThreadCreationFailedCard } from "./ThreadCreationFailedCard";
 import {
@@ -945,8 +945,11 @@ function ThreadDetailBody(
   } | null>(null);
   const activeUserInputRequestId = shownPendingUserInput?.requestId ?? null;
   const questionInFlow = Platform.OS === "android" && activeUserInputRequestId !== null;
+  // A failed start shows its card instead of the composer, but not over a running dictation.
   const composerSlotHidden =
-    activeUserInputRequestId !== null || props.creationState?.kind === "failed";
+    activeUserInputRequestId !== null ||
+    (props.creationState?.kind === "failed" &&
+      !isDictatingInto(props.composerDraftKey, voiceInputOwnerKey, voiceInputState));
   const pendingMessageEditBlocked =
     queuedRunEditBlockedReason({ openQuestionCount: activeUserInputRequestId === null ? 0 : 1 }) !==
     null;
