@@ -1968,6 +1968,13 @@ const composerDraftAtom = Atom.family((draftKey: string) =>
   Atom.make((get) => get(composerDraftsAtom)[draftKey] ?? EMPTY_DRAFT),
 );
 const EMPTY_DRAFT_ATOM = Atom.make(EMPTY_DRAFT);
+const composerDraftHasMessageAtom = Atom.family((draftKey: string) =>
+  Atom.make((get) => {
+    const draft = get(composerDraftAtom(draftKey));
+    return draft.text.trim().length > 0 || draft.attachments.length > 0;
+  }),
+);
+const NO_DRAFT_MESSAGE_ATOM = Atom.make(false);
 
 type ComposerDraftsByKey = Readonly<Record<string, ComposerDraft>>;
 const EMPTY_DRAFTS: ComposerDraftsByKey = {};
@@ -2055,6 +2062,11 @@ export function useComposerDraft(draftKey: string | null): ComposerDraft {
     ensureComposerDraftsLoaded();
   }, []);
   return draft;
+}
+
+/** Whether the draft holds text or attachments the user has not sent; flips only on that edge. */
+export function useComposerDraftHasMessage(draftKey: string | null): boolean {
+  return useAtomValue(draftKey ? composerDraftHasMessageAtom(draftKey) : NO_DRAFT_MESSAGE_ATOM);
 }
 
 export function useStickyComposerModelSelection(): ModelSelection | null {

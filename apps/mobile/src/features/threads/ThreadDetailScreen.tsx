@@ -130,7 +130,10 @@ import { useAppearancePreferences } from "../settings/appearance/AppearancePrefe
 import { collectProviderUsageLimits } from "@t3tools/shared/usageLimits";
 import type { ComposerEditorHandle } from "../../components/ComposerEditor";
 import type { StatusTone } from "../../components/StatusPill";
-import { getComposerDraftSnapshot } from "../../state/use-composer-drafts";
+import {
+  getComposerDraftSnapshot,
+  useComposerDraftHasMessage,
+} from "../../state/use-composer-drafts";
 import { RenderErrorBoundary, RenderFailureView } from "../../components/RenderErrorBoundary";
 import {
   ANDROID_READING_MAX_WIDTH,
@@ -178,6 +181,7 @@ import { ManagedRuntimeModeNotice } from "./ManagedRuntimeModeNotice";
 import { ComposerFeedback } from "./ComposerFeedback";
 import { ComposerUsageLimits } from "./ComposerUsageLimits";
 import { PendingUserInputCard } from "./PendingUserInputCard";
+import { isPendingQuestionHeldBack } from "./pendingQuestionHold";
 import { ProviderSubagentBar } from "./ProviderSubagentBar";
 import { ThreadCreationFailedCard } from "./ThreadCreationFailedCard";
 import {
@@ -398,7 +402,22 @@ function ThreadDetailBody(
   const navigation = useNavigation();
   const openLinkedThread = useOpenLinkedThread();
   const openInspector = useOpenThreadInspector();
-  const { session: voiceInputSession } = useGlobalVoiceInput();
+  const {
+    session: voiceInputSession,
+    state: voiceInputState,
+    ownerKey: voiceInputOwnerKey,
+  } = useGlobalVoiceInput();
+  const draftHasMessage = useComposerDraftHasMessage(props.composerDraftKey);
+  const [openedQuestionId, setOpenedQuestionId] = useState<RuntimeRequestId | null>(null);
+  const questionHeldBack = isPendingQuestionHeldBack({
+    requestId: props.activePendingUserInput?.requestId ?? null,
+    openedRequestId: openedQuestionId,
+    composerKey: props.composerDraftKey,
+    voiceOwnerKey: voiceInputOwnerKey,
+    voiceState: voiceInputState,
+    draftHasMessage,
+  });
+  const shownPendingUserInput = questionHeldBack ? null : props.activePendingUserInput;
   const reportedModelSelection = useThreadReportedModelSelection(props.selectedThreadDetailRef);
   const deviceState = useEnvironmentQuery(
     deviceEnvironment.state({ environmentId: props.environmentId, input: {} }),
@@ -753,6 +772,18 @@ function ThreadDetailBody(
             : null,
       };
     }
+    if (questionHeldBack && props.activePendingApproval === null) {
+      const requestId = props.activePendingUserInput?.requestId ?? null;
+      return {
+        kind: "child-input",
+        label: "Question waiting",
+        accessibilityLabel: "Open the agent's question",
+        onPress: () => {
+          Keyboard.dismiss();
+          setOpenedQuestionId(requestId);
+        },
+      };
+    }
     if (props.activePendingApproval !== null || props.activePendingUserInput !== null) {
       return null;
     }
@@ -912,7 +943,7 @@ function ThreadDetailBody(
     readonly requestId: RuntimeRequestId;
     readonly collapsed: boolean;
   } | null>(null);
-  const activeUserInputRequestId = props.activePendingUserInput?.requestId ?? null;
+  const activeUserInputRequestId = shownPendingUserInput?.requestId ?? null;
   const questionInFlow = Platform.OS === "android" && activeUserInputRequestId !== null;
   const composerSlotHidden =
     activeUserInputRequestId !== null || props.creationState?.kind === "failed";
@@ -1700,7 +1731,7 @@ function ThreadDetailBody(
                         />
                       </Animated.View>
                     ) : null}
-                    {props.activePendingApproval || props.activePendingUserInput ? (
+                    {props.activePendingApproval || shownPendingUserInput ? (
                       <Animated.View
                         className="shrink-0 gap-3 px-4 pb-3"
                         style={
@@ -1719,11 +1750,11 @@ function ThreadDetailBody(
                             onRespond={props.onRespondToApproval}
                           />
                         ) : null}
-                        {props.activePendingUserInput ? (
+                        {shownPendingUserInput ? (
                           <PendingUserInputCard
                             environmentId={props.environmentId}
                             canOperateThread={props.canOperateThread}
-                            pendingUserInput={props.activePendingUserInput}
+                            pendingUserInput={shownPendingUserInput}
                             maxHeight={pendingUserInputMaxHeight}
                             collapsed={userInputCollapsed}
                             onToggleCollapsed={handleToggleUserInputCollapsed}
