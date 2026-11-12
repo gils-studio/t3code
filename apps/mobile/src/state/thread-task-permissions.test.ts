@@ -127,6 +127,10 @@ vi.mock("./use-thread-outbox", async () => {
   return { dispatchingQueuedMessageIdAtom: Atom.make(null), useThreadOutboxMessages: () => ({}) };
 });
 vi.mock("./thread-outbox", () => ({ enqueueThreadOutboxMessage: state.enqueue }));
+vi.mock("../features/voice-input/voiceOutboxRuntime", () => ({
+  hasPendingVoice: () => false,
+  enqueueWithPendingVoice: (_draftKey: string, message: unknown) => state.enqueue(message),
+}));
 vi.mock("./composer-attachment-uploads", async () => {
   const { Atom } = await import("effect/reactivity");
   return {
