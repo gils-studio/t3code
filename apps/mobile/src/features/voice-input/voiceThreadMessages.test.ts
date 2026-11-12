@@ -76,7 +76,8 @@ describe("voice messages of a thread", () => {
   });
 
   it("tells the chat list whether a sent recording is still on the phone", () => {
-    const status = (items: ReadonlyArray<VoiceOutboxItem>) => threadVoiceStatus(items, "thread-key");
+    const status = (items: ReadonlyArray<VoiceOutboxItem>) =>
+      threadVoiceStatus(items, "thread-key");
     expect(status([item({}), item({ id: "voice-2", phase: "uploading" })])).toBe("uploading");
     expect(status([item({}), item({ id: "voice-2", phase: "failed" })])).toBe("transcribing");
     expect(status([item({ phase: "failed" })])).toBe("failed");

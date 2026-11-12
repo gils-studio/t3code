@@ -54,7 +54,8 @@ export function voiceDeliveryNotice(
   const pending = items.filter(needsPhone);
   if (pending.length === 0) return null;
   return {
-    title: pending.length === 1 ? "Sending voice message" : `Sending ${pending.length} voice messages`,
+    title:
+      pending.length === 1 ? "Sending voice message" : `Sending ${pending.length} voice messages`,
     text: pending.some((item) => item.phase === "uploading")
       ? "Uploading the recording"
       : "Transcribing on your computer, then this phone sends it",
