@@ -3,7 +3,12 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { QueuedThreadMessage } from "../../state/thread-outbox-model";
 import type { VoiceOutboxItem } from "./voiceOutbox";
-import { voiceQueueItems, withVoiceMessages } from "./voiceThreadMessages";
+import {
+  threadVoiceStatus,
+  voiceDeliveryNotice,
+  voiceQueueItems,
+  withVoiceMessages,
+} from "./voiceThreadMessages";
 
 const item = (overrides: Partial<VoiceOutboxItem>): VoiceOutboxItem => ({
   id: "voice-1",
@@ -68,5 +73,27 @@ describe("voice messages of a thread", () => {
     const items = [item({ mode: "draft" }), item({ id: "voice-2", phase: "recording" })];
     expect(withVoiceMessages([], items, thread(false))).toEqual([]);
     expect(voiceQueueItems(items, "thread-key", true)).toEqual([]);
+  });
+
+  it("tells the chat list whether a sent recording is still on the phone", () => {
+    const status = (items: ReadonlyArray<VoiceOutboxItem>) =>
+      threadVoiceStatus(items, "thread-key");
+    expect(status([item({}), item({ id: "voice-2", phase: "uploading" })])).toBe("uploading");
+    expect(status([item({}), item({ id: "voice-2", phase: "failed" })])).toBe("transcribing");
+    expect(status([item({ phase: "failed" })])).toBe("failed");
+    expect(status([item({ mode: "draft", phase: "uploading" })])).toBeNull();
+    expect(status([item({ ownerKey: "other", phase: "uploading" })])).toBeNull();
+  });
+
+  it("keeps the phone busy until every sent recording no longer needs it", () => {
+    expect(voiceDeliveryNotice([item({ phase: "uploading" })])?.text).toBe(
+      "Uploading the recording",
+    );
+    // The service sends an uploaded recording on its own.
+    expect(voiceDeliveryNotice([item({})])).toBeNull();
+    expect(voiceDeliveryNotice([item({ mode: "draft", heldMessage })])?.title).toBe(
+      "Sending voice message",
+    );
+    expect(voiceDeliveryNotice([item({ mode: "draft", phase: "uploading" })])).toBeNull();
   });
 });

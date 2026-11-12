@@ -6,8 +6,8 @@ import { voiceMessagePrefix } from "@t3tools/client-runtime/user-message";
 
 export const VOICE_SERVER_RECORDING_LIMIT_SECONDS = 30 * 60;
 const POLL_INTERVAL_MS = 1_000;
-/** Long enough for a held message to leave after the app was put away, short enough for offline. */
-const BACKGROUND_POLL_LIMIT_MS = 2 * 60_000;
+/** As long as the delivery service keeps the app alive; past it the app waits for its return. */
+const BACKGROUND_POLL_LIMIT_MS = 30 * 60_000;
 
 export type VoiceJob = {
   readonly status: "queued" | "transcribing" | "sending" | "done" | "failed";
@@ -126,6 +126,11 @@ const withTranscript = (prefixText: string, transcript: string) =>
 
 export const isInFlight = (item: VoiceOutboxItem) =>
   item.phase === "uploading" || item.phase === "processing";
+
+/** Sent, and nothing else can finish it: the audio is not on the server or the phone holds the message. */
+export const needsPhone = (item: VoiceOutboxItem) =>
+  isInFlight(item) &&
+  (item.heldMessage !== undefined || (item.mode === "send" && item.phase === "uploading"));
 
 /**
  * Owns every recording from the first byte until its text has arrived. Items
@@ -517,14 +522,14 @@ export class VoiceOutbox {
     }, POLL_INTERVAL_MS);
   }
 
-  /** Only a held message depends on this app to leave; anything else can wait for its return. */
+  /** In the background only sent messages that still need this phone; a dictation waits for its return. */
   private shouldPoll(): boolean {
-    const inFlight = [...this.items.values()].filter(isInFlight);
-    if (this.foreground) return inFlight.length > 0;
+    const items = [...this.items.values()];
+    if (this.foreground) return items.some(isInFlight);
     return (
       this.backgroundedAt !== null &&
       this.dependencies.now() - this.backgroundedAt < BACKGROUND_POLL_LIMIT_MS &&
-      inFlight.some((item) => item.heldMessage)
+      items.some(needsPhone)
     );
   }
 

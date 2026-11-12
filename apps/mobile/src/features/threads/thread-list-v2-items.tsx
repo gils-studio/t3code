@@ -77,6 +77,10 @@ import {
   type ThreadListV2Status,
 } from "./threadListV2";
 import { QueuedMessageIcon } from "./queued-message-icon";
+import { VoiceMessageStatus } from "../voice-input/VoiceMessageStatus";
+import { useThreadVoiceStatus } from "../voice-input/voiceOutboxRuntime";
+import type { ThreadVoiceStatus } from "../voice-input/voiceThreadMessages";
+import { scopedThreadKey } from "../../lib/scopedEntities";
 import { shouldRecedeThreadRow } from "./thread-row-emphasis";
 import { ThreadSearchMatchExcerpt } from "./thread-search-match";
 import { useScaledTextRole } from "../settings/appearance/useScaledTextRole";
@@ -133,6 +137,34 @@ const STATUS_LABEL_BY_STATUS: Partial<Record<ThreadListV2Status, StatusLabel>> =
     iconTintClassName: "accent-warning-foreground",
   },
 };
+/** "Uploading" means the phone is still needed; once uploaded the computer finishes it alone. */
+const VOICE_STATUS_LABEL: Record<ThreadVoiceStatus, StatusLabel> = {
+  uploading: {
+    label: "Uploading",
+    icon: "arrow.up.circle",
+    className: "text-adaptive-amber-700-300",
+    iconTintClassName: "accent-adaptive-amber-700-300",
+  },
+  transcribing: {
+    label: "Transcribing",
+    icon: "mic",
+    className: "text-adaptive-sky-600-400",
+    iconTintClassName: "accent-adaptive-sky-600-400",
+  },
+  failed: {
+    label: "Voice failed",
+    icon: "exclamationmark.circle",
+    className: "text-danger-foreground",
+    iconTintClassName: "accent-danger-foreground",
+  },
+};
+/** A request or a running agent says more than the recording that waits behind it. */
+const STATUSES_OVER_VOICE: ReadonlySet<ThreadListV2Status> = new Set([
+  "approval",
+  "input",
+  "request",
+  "working",
+]);
 const DONE_STATUS_LABEL: StatusLabel = {
   label: "Done",
   icon: "checkmark.circle",
@@ -520,16 +552,20 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
       </View>
       {!isDraft ? (
         <View className="mt-1" style={{ paddingLeft: titleTextInset }}>
-          <Text
-            className={cn(
-              "text-xs",
-              selected
-                ? selectedThreadRowColors.foregroundClassName
-                : rowAppearance.tertiaryForegroundClassName,
-            )}
-          >
-            Sends on reconnect
-          </Text>
+          {pendingTask.message.awaitingVoiceId ? (
+            <VoiceMessageStatus voiceId={pendingTask.message.awaitingVoiceId} />
+          ) : (
+            <Text
+              className={cn(
+                "text-xs",
+                selected
+                  ? selectedThreadRowColors.foregroundClassName
+                  : rowAppearance.tertiaryForegroundClassName,
+              )}
+            >
+              Sends on reconnect
+            </Text>
+          )}
         </View>
       ) : null}
       {branch || props.environmentLabel ? (
@@ -764,13 +800,20 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const rowAppearance = getThreadListV2RowAppearance(theme, sidebarPane, selected);
 
   const status = resolveThreadListV2Status(thread);
+  const voiceStatus = useThreadVoiceStatus(scopedThreadKey(thread.environmentId, thread.id));
+  const voiceLabel =
+    voiceStatus !== null && !STATUSES_OVER_VOICE.has(status)
+      ? VOICE_STATUS_LABEL[voiceStatus]
+      : undefined;
   const isUnread = status === "ready" && threadHasUnseenCompletion(thread);
   const workingLabel = STATUS_LABEL_BY_STATUS[status];
-  const showsWoke = status === "ready" && props.wokeAt !== null;
+  const showsWoke = status === "ready" && props.wokeAt !== null && voiceLabel === undefined;
   const statusLabel =
+    voiceLabel ??
     (status === "working" && workingLabel !== undefined && thread.goal?.status === "active"
       ? { ...workingLabel, label: "Goal" }
-      : workingLabel) ?? (isUnread ? DONE_STATUS_LABEL : undefined);
+      : workingLabel) ??
+    (isUnread ? DONE_STATUS_LABEL : undefined);
   const recede = shouldRecedeThreadRow({ status, selected });
   const isRegeneratingTitle = thread.titleRegeneration != null;
   const rowAccessibilityLabel = `${thread.title}${props.hasQueuedMessages ? ", messages queued to send" : ""}${isRegeneratingTitle ? ", regenerating title" : ""}`;
@@ -1229,7 +1272,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
                 )}
               >
                 {statusLabel.label}
-                {status === "working" ? (
+                {voiceLabel ? null : status === "working" ? (
                   <ThreadListV2Duration startedAt={resolveThreadWorkingStartedAt(thread)} />
                 ) : status === "waiting" ? (
                   <ThreadListV2Duration startedAt={thread.latestRun?.completedAt ?? null} />

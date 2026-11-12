@@ -85,6 +85,14 @@ class T3VoiceTranscriptionModule : Module() {
       VoiceUploadWorker.enqueue(context, id, audioUri, metaUri, url, token)
     }
 
+    Function("showDelivery") { title: String, text: String ->
+      VoiceDeliveryService.show(requireNotNull(appContext.reactContext), title, text)
+    }
+
+    Function("hideDelivery") {
+      VoiceDeliveryService.hide(requireNotNull(appContext.reactContext))
+    }
+
     OnDestroy { scope.cancel() }
   }
 

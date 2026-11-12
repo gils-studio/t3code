@@ -1,7 +1,7 @@
 import type { CommandId, EnvironmentId, MessageId, ThreadId } from "@t3tools/contracts";
 
 import type { QueuedThreadMessage } from "../../state/thread-outbox-model";
-import { isInFlight, type VoiceOutboxItem } from "./voiceOutbox";
+import { isInFlight, needsPhone, type VoiceOutboxItem } from "./voiceOutbox";
 
 export const VOICE_MESSAGE_LABEL = "Voice message";
 
@@ -17,10 +17,13 @@ export const voiceItemText = (item: VoiceOutboxItem) =>
   [item.prefixText, voicePreviewText(item.previewText)].filter(Boolean).join("\n\n") ||
   VOICE_MESSAGE_LABEL;
 
+/** "Uploaded" tells the user the recording no longer depends on this phone being on. */
 function voiceProgressLabel(item: VoiceOutboxItem): string {
   if (item.phase === "uploading") return "Uploading recording";
-  if (item.remoteStatus === "transcribing") return "Transcribing";
-  return item.queuePosition ? `Waiting, ${item.queuePosition} ahead` : "Waiting to transcribe";
+  if (item.remoteStatus === "transcribing") return "Uploaded, transcribing";
+  return item.queuePosition
+    ? `Uploaded, ${item.queuePosition} ahead`
+    : "Uploaded, waiting to transcribe";
 }
 
 export function voiceItemLabel(item: VoiceOutboxItem): string {
@@ -29,6 +32,34 @@ export function voiceItemLabel(item: VoiceOutboxItem): string {
   if (item.remoteStatus === "sending") return "Sending message";
   const progress = voiceProgressLabel(item);
   return item.heldMessage?.steers ? `${progress}, then sends` : progress;
+}
+
+export type ThreadVoiceStatus = "uploading" | "transcribing" | "failed";
+
+/** What a chat row shows for its sent recordings, before the agent has the message. */
+export function threadVoiceStatus(
+  items: ReadonlyArray<VoiceOutboxItem>,
+  threadKey: string,
+): ThreadVoiceStatus | null {
+  const sent = items.filter((item) => item.ownerKey === threadKey && isSentVoiceItem(item));
+  if (sent.some((item) => item.phase === "uploading")) return "uploading";
+  if (sent.some(isInFlight)) return "transcribing";
+  return sent.some((item) => item.phase === "failed") ? "failed" : null;
+}
+
+/** The notification that keeps the app alive while a sent recording still needs this phone. */
+export function voiceDeliveryNotice(
+  items: ReadonlyArray<VoiceOutboxItem>,
+): { readonly title: string; readonly text: string } | null {
+  const pending = items.filter(needsPhone);
+  if (pending.length === 0) return null;
+  return {
+    title:
+      pending.length === 1 ? "Sending voice message" : `Sending ${pending.length} voice messages`,
+    text: pending.some((item) => item.phase === "uploading")
+      ? "Uploading the recording"
+      : "Transcribing on your computer, then this phone sends it",
+  };
 }
 
 export const voiceItemSteers = (item: VoiceOutboxItem) => item.heldMessage?.steers === true;

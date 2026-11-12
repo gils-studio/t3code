@@ -192,7 +192,7 @@ describe("VoiceOutbox", () => {
       return { ...h, enqueue };
     };
 
-    it("keeps fetching a held transcript after the app was put away, but nothing else", async () => {
+    it("keeps polling sent recordings that need the phone after the app was put away, not dictation", async () => {
       vi.useFakeTimers();
       try {
         const h = await holdIt();
@@ -207,6 +207,13 @@ describe("VoiceOutbox", () => {
         other.client.fetchJob.mockClear();
         await vi.advanceTimersByTimeAsync(1_000);
         expect(other.client.fetchJob).not.toHaveBeenCalled();
+
+        const sent = harness();
+        await sent.finish("send");
+        sent.outbox.setForeground(false);
+        sent.client.fetchJob.mockClear();
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(sent.client.fetchJob).toHaveBeenCalledWith("voice-1");
       } finally {
         vi.useRealTimers();
       }
