@@ -2066,9 +2066,7 @@ export function useComposerDraft(draftKey: string | null): ComposerDraft {
 
 /** Whether the draft holds text or attachments the user has not sent; flips only on that edge. */
 export function useComposerDraftHasMessage(draftKey: string | null): boolean {
-  return useAtomValue(
-    draftKey ? composerDraftHasMessageAtom(draftKey) : NO_DRAFT_MESSAGE_ATOM,
-  );
+  return useAtomValue(draftKey ? composerDraftHasMessageAtom(draftKey) : NO_DRAFT_MESSAGE_ATOM);
 }
 
 export function useStickyComposerModelSelection(): ModelSelection | null {
