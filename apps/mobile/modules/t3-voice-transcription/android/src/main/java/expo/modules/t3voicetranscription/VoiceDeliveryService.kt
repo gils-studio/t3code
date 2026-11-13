@@ -13,11 +13,18 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.ReactContext
+import com.facebook.react.bridge.UiThreadUtil
+import com.facebook.react.jstasks.HeadlessJsTaskConfig
+import com.facebook.react.jstasks.HeadlessJsTaskContext
 
 private const val CHANNEL_ID = "voice-delivery"
 private const val NOTIFICATION_ID = 0x7600
 private const val EXTRA_TITLE = "title"
 private const val EXTRA_TEXT = "text"
+/** Registered in voiceUpload.android.ts; it only waits, its job is keeping JS timers running. */
+private const val JS_TASK_KEY = "T3VoiceDelivery"
 /** Matches the outbox's background polling; past it the app waits until it is opened again. */
 private const val MAX_RUN_MS = 30 * 60_000L
 
@@ -101,9 +108,11 @@ class VoiceDeliveryService : Service() {
 
   companion object {
     @Volatile private var running = false
+    private var jsTaskId: Int? = null
 
     /** False when Android refuses, say because the app is already in the background. */
     fun show(context: Context, title: String, text: String): Boolean {
+      keepJsTimersRunning(context)
       // Starting a foreground service from the background is refused; updating its notification is not.
       if (running) {
         context
@@ -128,9 +137,43 @@ class VoiceDeliveryService : Service() {
     }
 
     fun hide(context: Context) {
+      releaseJsTimers(context)
       if (!running) return
       running = false
       context.stopService(Intent(context, VoiceDeliveryService::class.java))
+    }
+
+    /**
+     * React Native stops JS timers once the app is paused, unless a headless JS task runs. The
+     * outbox polls with timers, so without this a held message waits until the app is opened.
+     */
+    private fun keepJsTimersRunning(context: Context) {
+      val reactContext = context as? ReactContext ?: return
+      UiThreadUtil.runOnUiThread {
+        val tasks = HeadlessJsTaskContext.getInstance(reactContext)
+        if (jsTaskId?.let(tasks::isTaskRunning) == true) return@runOnUiThread
+        jsTaskId =
+          try {
+            tasks.startTask(
+              HeadlessJsTaskConfig(
+                JS_TASK_KEY,
+                Arguments.createMap(),
+                MAX_RUN_MS,
+                isAllowedInForeground = true
+              )
+            )
+          } catch (_: RuntimeException) {
+            null
+          }
+      }
+    }
+
+    private fun releaseJsTimers(context: Context) {
+      val reactContext = context as? ReactContext ?: return
+      UiThreadUtil.runOnUiThread {
+        jsTaskId?.let(HeadlessJsTaskContext.getInstance(reactContext)::finishTask)
+        jsTaskId = null
+      }
     }
   }
 }
