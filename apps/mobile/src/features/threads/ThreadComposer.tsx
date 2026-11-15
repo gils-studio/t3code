@@ -574,6 +574,8 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
       canSendText: queuedEdit === null,
       sendsThroughDraft: () => getComposerDraftSnapshot(composerDraftKey).attachments.length > 0,
       clearDraftText: () => setComposerDraftText(composerDraftKey, ""),
+      steersActiveTurn: () =>
+        props.activeThreadBusy && props.canSteerActiveTurn && props.followUpBehavior === "steer",
     },
     onChangeDraftMessage: (text) => setComposerDraftText(composerDraftKey, text),
     onChangeSelection: composerMenu.onSelectionChange,

@@ -29,6 +29,7 @@ import {
   type VoiceHeldMessage,
   type VoiceOutboxItem,
   type VoiceServerClient,
+  type VoiceSteerHandover,
 } from "./voiceOutbox";
 import { voiceOutboxFileStore } from "./voiceOutboxStore";
 import {
@@ -219,35 +220,42 @@ export function holdVoiceThreadMessage(
   );
 }
 
+/** The message a sent recording becomes once the phone, not the service, delivers it. */
+export function voiceSteerHandover(
+  item: VoiceOutboxItem,
+  steers: boolean,
+  target: { readonly environmentId: EnvironmentId; readonly threadId: ThreadId },
+): VoiceSteerHandover {
+  const metadata = makeQueuedMessageMetadata();
+  const message: QueuedThreadMessage = {
+    ...target,
+    messageId: MessageId.make(metadata.messageId),
+    commandId: CommandId.make(metadata.commandId),
+    text: voiceItemText(item),
+    attachments: [],
+    dispatchMode: steerDispatchMode(steers),
+    awaitingVoiceId: item.id,
+    createdAt: new Date(item.createdAt).toISOString(),
+  };
+  return {
+    held: {
+      environmentId: String(target.environmentId),
+      threadId: String(target.threadId),
+      messageId: String(message.messageId),
+      draftKey: item.ownerKey,
+      sendsAlone: item.prefixText.length > 0,
+    },
+    enqueueMessage: () => enqueueThreadOutboxMessage(message),
+  };
+}
+
 /** Switches a sent recording between steering the agent and queueing behind it. */
 export function setVoiceSteering(
   item: VoiceOutboxItem,
   steers: boolean,
   target: { readonly environmentId: EnvironmentId; readonly threadId: ThreadId },
 ): Promise<void> {
-  return voiceOutbox.setSteering(item.id, steers, () => {
-    const metadata = makeQueuedMessageMetadata();
-    const message: QueuedThreadMessage = {
-      ...target,
-      messageId: MessageId.make(metadata.messageId),
-      commandId: CommandId.make(metadata.commandId),
-      text: voiceItemText(item),
-      attachments: [],
-      dispatchMode: steerDispatchMode(steers),
-      awaitingVoiceId: item.id,
-      createdAt: new Date(item.createdAt).toISOString(),
-    };
-    return {
-      held: {
-        environmentId: String(target.environmentId),
-        threadId: String(target.threadId),
-        messageId: String(message.messageId),
-        draftKey: item.ownerKey,
-        sendsAlone: item.prefixText.length > 0,
-      },
-      enqueueMessage: () => enqueueThreadOutboxMessage(message),
-    };
-  });
+  return voiceOutbox.setSteering(item.id, steers, () => voiceSteerHandover(item, steers, target));
 }
 
 export const hasPendingVoice = (draftKey: string) =>

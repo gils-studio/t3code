@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   VoiceOutbox,
+  type VoiceHandoffTarget,
   type VoiceJob,
   type VoiceOutboxDependencies,
   type VoiceOutboxItem,
@@ -10,7 +11,11 @@ import {
 } from "./voiceOutbox";
 
 function harness(
-  options: { readonly saved?: ReadonlyArray<VoiceOutboxItem>; readonly speaker?: string } = {},
+  options: {
+    readonly saved?: ReadonlyArray<VoiceOutboxItem>;
+    readonly speaker?: string;
+    readonly steerHandover?: VoiceHandoffTarget["steerHandover"];
+  } = {},
 ) {
   const stored = new Map((options.saved ?? []).map((item) => [item.id, item]));
   const missingAudio = new Set<string>();
@@ -63,6 +68,7 @@ function harness(
     clearDraftText: () => {
       draftText = "";
     },
+    ...(options.steerHandover ? { steerHandover: options.steerHandover } : {}),
   });
   const finish = async (disposition: "draft" | "send") => {
     handoff.recordingStarted("file:///cache/a.aac");
@@ -402,6 +408,39 @@ describe("VoiceOutbox", () => {
       expect(h.heldMessages.remove).not.toHaveBeenCalled();
       expect(h.saved()).toMatchObject({ mode: "draft", heldMessage: { steers: false } });
       expect(h.client.claim).toHaveBeenCalledOnce();
+    });
+
+    it("steers from the moment it is sent while the agent runs, before the service hears of it", async () => {
+      const enqueueMessage = vi.fn(async () => {});
+      const h = harness({ steerHandover: () => ({ held, enqueueMessage }) });
+      await h.finish("send");
+      expect(enqueueMessage).toHaveBeenCalledOnce();
+      expect(h.stored.get("voice-1")).toMatchObject({
+        mode: "draft",
+        prefixText: "typed",
+        heldMessage: { messageId: "message-1", steers: true },
+      });
+      expect(h.client.enqueueUpload).toHaveBeenCalledWith(
+        expect.objectContaining({ mode: "draft" }),
+      );
+      expect(h.client.claim).not.toHaveBeenCalled();
+      h.jobs.set("voice-1", h.done("Wort"));
+      await h.outbox.poll();
+      expect(h.heldMessages.release).toHaveBeenCalledWith(
+        expect.objectContaining({ messageId: "message-1" }),
+        "[Voice message]\n\ntyped\n\nWort",
+      );
+    });
+
+    it("lets the service send it when the steering message could not be stored", async () => {
+      const enqueueMessage = vi.fn(async () => {
+        throw new Error("disk full");
+      });
+      const h = harness({ steerHandover: () => ({ held, enqueueMessage }) });
+      await h.finish("send");
+      expect(h.stored.get("voice-1")).toMatchObject({ mode: "send", prefixText: "typed" });
+      expect(h.stored.get("voice-1")?.heldMessage).toBeUndefined();
+      expect(h.readDraftText()).toBe("");
     });
 
     it("leaves the service in charge when the message could not be stored", async () => {
