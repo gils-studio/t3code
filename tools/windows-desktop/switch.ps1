@@ -3,6 +3,8 @@
 param(
   [Parameter(Mandatory = $true)] [string] $Installer,
   [string] $NotifyThread = "",
+  # Stop at once instead of waiting until no agent works; interrupted threads are told to continue.
+  [switch] $Now,
   [int] $QuietChecks = 4,
   [int] $CheckSeconds = 30,
   [int] $MaxWaitHours = 8
@@ -38,6 +40,17 @@ const row = db.prepare("select count(*) as n from orchestration_v2_projection_ru
 console.log(row.n);
 '@ | Set-Content -Path $QueryScript -Encoding utf8
 
+$BusyThreadsScript = Join-Path $Work "busy-threads.mjs"
+@'
+import { DatabaseSync } from "node:sqlite";
+const db = new DatabaseSync(process.argv[2], { readOnly: true });
+for (const row of db.prepare("select distinct thread_id from orchestration_v2_projection_runs where status in ('running','starting','queued','preparing','waiting')").all()) console.log(row.thread_id);
+'@ | Set-Content -Path $QueryScript -Encoding utf8
+
+function Get-BusyThreads {
+  @(& node --no-warnings $BusyThreadsScript $Db 2>$null | Where-Object { $_ -match '^[0-9a-f-]{36}$' })
+}
+
 function Get-BusyRuns {
   $out = & node --no-warnings $QueryScript $Db 2>$null
   if ($LASTEXITCODE -ne 0) { return 999 }
@@ -54,19 +67,28 @@ function Read-Runtime {
 }
 
 # The app exe is a GUI binary: `&` neither waits for it nor sets $LASTEXITCODE, so use Start-Process.
-function Send-Wake([string] $Message) {
-  if (-not $NotifyThread) { return }
+function Send-Thread([string] $ThreadId, [string] $Message) {
   $serverEntry = Join-Path $AppDir "resources\server.asar\apps\server\dist\bin.mjs"
   $outFile = Join-Path $Work "thread-send.out"
   $errFile = Join-Path $Work "thread-send.err"
   for ($i = 0; $i -lt 5; $i++) {
     $env:ELECTRON_RUN_AS_NODE = "1"
-    $p = Start-Process -FilePath $Exe -ArgumentList @("`"$serverEntry`"", "thread", "send", $NotifyThread, "`"$Message`"") `
+    $p = Start-Process -FilePath $Exe -ArgumentList @("`"$serverEntry`"", "thread", "send", $ThreadId, "`"$Message`"") `
       -NoNewWindow -Wait -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
     Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
-    Log "thread send exit=$($p.ExitCode) $(Get-Content $outFile -Raw) $(Get-Content $errFile -Raw)"
+    Log "thread send $ThreadId exit=$($p.ExitCode) $(Get-Content $outFile -Raw) $(Get-Content $errFile -Raw)"
     if ($p.ExitCode -eq 0) { return }
     Start-Sleep -Seconds 15
+  }
+}
+
+function Send-Wake([string] $Message) {
+  if ($NotifyThread) { Send-Thread $NotifyThread $Message }
+}
+
+function Resume-Interrupted {
+  foreach ($t in $Interrupted) {
+    Send-Thread $t "[T3 neu gestartet] Die Desktop-App wurde fuer ein Update neu gestartet und hat deinen Turn unterbrochen. Mach dort weiter, wo du aufgehoert hast."
   }
 }
 
@@ -107,17 +129,19 @@ function Stop-App {
 Log "start installer=$Installer notify=$NotifyThread"
 if (-not (Test-Path $Installer)) { Log "installer missing"; exit 1 }
 
-# 1. Wait until no agent run is active and nobody is recording a voice message.
+# 1. Wait until no agent run is active (unless -Now) and nobody is recording a voice message.
+if ($Now) { $QuietChecks = 1 }
 $quiet = 0
 $giveUp = (Get-Date).AddHours($MaxWaitHours)
 while ($quiet -lt $QuietChecks) {
   if ((Get-Date) -gt $giveUp) { Log "gave up: never quiet for long enough"; exit 2 }
-  $busy = Get-BusyRuns
+  $busy = if ($Now) { 0 } else { Get-BusyRuns }
   if ($busy -eq 0 -and -not (Test-VoiceLive)) { $quiet++ } else { $quiet = 0 }
-  Start-Sleep -Seconds $CheckSeconds
+  if ($quiet -lt $QuietChecks) { Start-Sleep -Seconds $CheckSeconds }
 }
+$Interrupted = @(Get-BusyThreads | Where-Object { $_ -ne $NotifyThread })
 $old = Read-Runtime
-Log "quiet; old server pid=$($old.pid) version=$($old.serverVersion)"
+Log "quiet; old server pid=$($old.pid) version=$($old.serverVersion); interrupting $($Interrupted.Count) threads"
 
 # 2. Stop the app, back up the install and the database files.
 Stop-App
@@ -148,6 +172,7 @@ try {
   if (-not $rt) { throw "new server never came up" }
   Log "new server pid=$($rt.pid) version=$($rt.serverVersion) origin=$($rt.origin)"
   Set-Content -Path (Join-Path $Work "done") -Value "$Stamp $($rt.serverVersion)" -Encoding utf8
+  Resume-Interrupted
   Send-Wake "[Fork-Umstieg] Die Fork-Desktop-App laeuft (Server $($rt.serverVersion), PID $($rt.pid)). Log: $Log. Bitte verifizieren und Nils berichten."
   Log "done"
 } catch {
@@ -163,6 +188,7 @@ try {
   Start-App
   $rt = Wait-Server -Since $startedAt
   Log "rollback server pid=$($rt.pid) version=$($rt.serverVersion)"
+  Resume-Interrupted
   Send-Wake "[Fork-Umstieg] FEHLGESCHLAGEN, alte Version wiederhergestellt ($($rt.serverVersion)). Log: $Log"
   exit 3
 }
