@@ -19,6 +19,11 @@ export JAVA_HOME="${T3_APK_JAVA_HOME:-$HOME/fleet-tools/jdk-17.0.21+9}"
 export PATH="$JAVA_HOME/bin:${T3_APK_NODE_BIN:-$HOME/fleet/tools/node24/bin}:$PATH"
 export NODE_OPTIONS=--max-old-space-size=4096
 
+# One build per work tree: a second one would check out and prebuild under the first one's Gradle.
+mkdir -p "$(dirname "$WORK")"
+exec 9>"$WORK.lock"
+flock 9 || exit 1
+
 if [ ! -d "$WORK/.git" ]; then
   git clone --filter=blob:none "$REPO" "$WORK"
 fi
