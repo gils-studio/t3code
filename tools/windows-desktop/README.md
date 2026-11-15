@@ -20,7 +20,7 @@ fleet pull laptop-gerrit t3d release/T3-Code-<version>-x64.exe --to ~/.t3/fork-s
 
 ## Switch
 
-`switch.ps1` waits until no run is active and nobody is recording a voice message for two minutes. Then it stops the app, backs up the install and `statev2.sqlite` to `~/.t3/fork-switch/backup-<time>`, installs silently over the same per-user install, sets the `T3 Code` autostart entry (HKCU Run), starts the app and waits for the new server. If anything fails, it restores the old install and database. With `-NotifyThread <threadId>` it posts the result into that thread through `t3 thread send`, which wakes the agent there on the new server.
+`switch.ps1` waits until no run is active and nobody is recording a voice message for two minutes; with `-Now` it only waits out a voice recording and afterwards tells every interrupted thread to continue. Then it stops the app, backs up the install and `statev2.sqlite` to `~/.t3/fork-switch/backup-<time>`, installs silently over the same per-user install, sets the `T3 Code` autostart entry (HKCU Run), starts the app and waits for the new server. If anything fails, it restores the old install and database. With `-NotifyThread <threadId>` it posts the result into that thread through `t3 thread send`, which wakes the agent there on the new server.
 
 Start it outside the app's process tree, then end your turn so the app gets quiet:
 
