@@ -141,7 +141,8 @@ function collapsedEditorInset(text: ScaledTextRole): number {
   return Math.max(0, Math.round(COLLAPSED_EDITOR_DEFAULT_INSET - shift));
 }
 
-function useCompactComposerEditor(text: ScaledTextRole, value: string) {
+/** `collapsed`: the editor is hidden for dictation, so its slot must not keep a multi-line height. */
+function useCompactComposerEditor(text: ScaledTextRole, value: string, collapsed: boolean) {
   const [contentSize, setContentSize] = useState({ width: 0, height: 0 });
   const [compactWidth, setCompactWidth] = useState(0);
   const contentHeight = contentSize.height;
@@ -180,7 +181,7 @@ function useCompactComposerEditor(text: ScaledTextRole, value: string) {
   }));
   return {
     isExpanded,
-    containerStyle: { height: isExpanded ? height + 52 : compactRowHeight },
+    containerStyle: { height: isExpanded && !collapsed ? height + 52 : compactRowHeight },
     editorStyle,
     onRowLayout: (event: { nativeEvent: { layout: { width: number } } }) => {
       rowWidth.set(event.nativeEvent.layout.width);
@@ -592,8 +593,8 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   const surfacePaddingVertical = usesLargeControls ? 9 : floatingSidebarComposer ? 6 : 2;
   const [compactRowWidth, setCompactRowWidth] = useState(0);
   const compactAttachmentLimit = compactRowWidth >= 500 ? 3 : 1;
-  const compactEditor = useCompactComposerEditor(bodyText, draftMessage);
   const showsCompactDictation = isVoiceInputPresented;
+  const compactEditor = useCompactComposerEditor(bodyText, draftMessage, showsCompactDictation);
   const isToolbarVisible = isVoiceInputPresented;
   const hasEditingAttachments =
     (queuedEdit !== null && queuedEdit.existingAttachments.length > 0) ||
