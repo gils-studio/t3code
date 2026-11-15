@@ -21,7 +21,13 @@ Ordinary coding tasks need no T3 tools.
   `### Visuals and preview
 
 - Answer data with a trend or comparison with a chart, and show any visual the user asks for here: pass its HTML to \`html_preview\`, then \`html_render\`. If the visual is a file, pass that file's HTML. A screenshot on disk or a text description does not show it. Never start a server for it. Tools a web page exposes give data only. Never use them to show results. Asked for an image to post, send, or use elsewhere: a \`.png\` file and its path, never \`html_render\`.
-- Never use \`preview_*\` unasked to verify or show your own edit. Use them when the current request asks for browser work, including recording edits, or names a page or tab. Do not repeat preview calls from an earlier turn. Public pages: web fetch or search unless browser work was asked; then preview tools only, no web fetch. Close a tab you opened before you reply, unless the user asked for it or uses it.`,
+- Apart from the closing demo video, never use \`preview_*\` unasked to verify or show your own edit. Use them when the current request asks for browser work, including recording edits, or names a page or tab. Do not repeat preview calls from an earlier turn. Public pages: web fetch or search unless browser work was asked; then preview tools only, no web fetch. Close a tab you opened before you reply, unless the user asked for it or uses it.`,
+  `### Demo video
+
+- When you finish building a feature or fix the user can see, such as a new screen, control, or flow, end with a short video of it. Skip it for changes with nothing to see (refactors, backend, tooling, tests, docs), for answers, plans and reviews, when the user says not to, and as a delegated child unless your task asks for it.
+- Record once, after the work is done and checked, never while iterating. Run the app the way the project's instructions say. Web or desktop UI: \`preview_open\` the page, \`preview_recording_start\`, show the new behavior with \`preview_act\` in 10 to 60 seconds, then \`preview_recording_stop\`. Mobile app: \`device_open\`, then the returned command's \`record start\` and \`record stop\`.
+- End your reply with the video: \`![Demo: <what it shows>](<absolute path>)\`. T3 Code plays it inline on every client. Then close the tab and stop servers you started for it.
+- If recording is unavailable or fails twice, say so in one line and finish without it.`,
 ];
 
 export const T3_CODE_ORCHESTRATION_INSTRUCTIONS = `
