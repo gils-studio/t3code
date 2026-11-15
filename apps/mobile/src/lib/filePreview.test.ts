@@ -1055,6 +1055,7 @@ describe("ThreadInlineFilePreview playback", () => {
       await act(async () => button.click());
       expect(audio.setAudioMode).toHaveBeenLastCalledWith({
         allowsRecording: false,
+        allowsBackgroundRecording: false,
         playsInSilentMode: true,
         interruptionMode: "doNotMix",
         shouldPlayInBackground: false,
@@ -1138,6 +1139,7 @@ describe("ThreadInlineFilePreview playback", () => {
       await activateAudioSession(recording);
       expect(audio.setAudioMode).toHaveBeenLastCalledWith({
         allowsRecording: true,
+        allowsBackgroundRecording: true,
         interruptionMode: "doNotMix",
         playsInSilentMode: true,
         shouldPlayInBackground: false,
@@ -1166,6 +1168,7 @@ describe("ThreadInlineFilePreview playback", () => {
       expect(audio.player.play).toHaveBeenCalledTimes(phase === "playing" ? 2 : 1);
       expect(audio.setAudioMode).toHaveBeenLastCalledWith({
         allowsRecording: false,
+        allowsBackgroundRecording: false,
         interruptionMode: "doNotMix",
         playsInSilentMode: true,
         shouldPlayInBackground: false,

@@ -132,6 +132,8 @@ describe("VoiceInputController", () => {
       const harness = handoffHarness();
       await harness.controller.start();
       expect(harness.recorder.record).toHaveBeenCalledWith({ forDuration: 1800 });
+      harness.controller.appMovedToBackground();
+      expect(harness.recorder.stop).not.toHaveBeenCalled();
       await harness.controller.stop("send");
 
       expect(harness.events).toEqual([
@@ -143,7 +145,6 @@ describe("VoiceInputController", () => {
     });
 
     it.each([
-      ["moving to the background", (c: VoiceInputController) => c.appMovedToBackground()],
       [
         "a recorder error",
         (c: VoiceInputController) =>

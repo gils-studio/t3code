@@ -380,7 +380,8 @@ const config: ExpoConfig = {
         microphonePermission: "Allow T3 Code to use your microphone for voice input.",
         recordAudioAndroid: true,
         enableBackgroundPlayback: false,
-        enableBackgroundRecording: false,
+        // Dictation keeps running when the user switches apps; Android shows a recording notification.
+        enableBackgroundRecording: true,
       },
     ],
     [
