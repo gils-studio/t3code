@@ -119,6 +119,8 @@ export type VoiceHandoffTarget = {
   readonly sendsThroughDraft: () => boolean;
   readonly readDraftText: () => string;
   readonly clearDraftText: () => void;
+  /** Asked when a recording is sent: a message that should steer has to leave from the phone. */
+  readonly steerHandover?: (item: VoiceOutboxItem) => VoiceSteerHandover | null;
 };
 
 const withTranscript = (prefixText: string, transcript: string) =>
@@ -236,10 +238,18 @@ export class VoiceOutbox {
             sourceUri: uri,
             ...(previewText ? { previewText } : {}),
           };
+          const handover = mode === "send" ? (target.steerHandover?.(finished) ?? null) : null;
           // The typed text may only leave the draft once it is stored with the recording.
-          await this.persist(finished);
+          // A steering message is held before the upload, so the service never sends it itself.
+          const delivered: VoiceOutboxItem = handover
+            ? await this.holdWith(
+                finished,
+                { ...finished, mode: "draft", heldMessage: { ...handover.held, steers: true } },
+                handover.enqueueMessage,
+              ).catch(() => finished)
+            : await this.persist(finished).then(() => finished);
           if (mode === "send") target.clearDraftText();
-          await this.deliver(finished);
+          await this.deliver(delivered);
           if (submitDraft) this.dependencies.startThread(target.ownerKey, id!, previewText);
         });
       },
@@ -279,19 +289,11 @@ export class VoiceOutbox {
     return this.enqueue(async () => {
       const item = this.items.get(id);
       if (!item || item.mode !== "draft" || item.heldMessage || !isInFlight(item)) return false;
-      await this.persist({
-        ...item,
-        ownerKey,
-        heldMessage: held,
-        submitDraft: false,
-        prefixText,
-      });
-      try {
-        await enqueueMessage();
-      } catch (error) {
-        await this.persist(item);
-        throw error;
-      }
+      await this.holdWith(
+        item,
+        { ...item, ownerKey, heldMessage: held, submitDraft: false, prefixText },
+        enqueueMessage,
+      );
       return true;
     });
   }
@@ -315,13 +317,7 @@ export class VoiceOutbox {
       if (!steers || item.mode !== "send") return;
       const next = handover();
       const holding = { ...item, heldMessage: { ...next.held, steers } };
-      await this.persist(holding);
-      try {
-        await next.enqueueMessage();
-      } catch (error) {
-        await this.persist(item);
-        throw error;
-      }
+      await this.holdWith(item, holding, next.enqueueMessage);
       const client = this.dependencies.getClient();
       // Offline or not uploaded yet: the next poll claims it.
       if (client) await this.claimFromService(client, holding).catch(() => {});
@@ -370,6 +366,22 @@ export class VoiceOutbox {
         }
       }
     });
+  }
+
+  /** The link is stored before the message exists; a message that cannot be stored undoes it. */
+  private async holdWith(
+    item: VoiceOutboxItem,
+    holding: VoiceOutboxItem,
+    enqueueMessage: () => Promise<void>,
+  ): Promise<VoiceOutboxItem> {
+    await this.persist(holding);
+    try {
+      await enqueueMessage();
+    } catch (error) {
+      await this.persist(item);
+      throw error;
+    }
+    return holding;
   }
 
   private async claimFromService(

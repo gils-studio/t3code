@@ -4,23 +4,26 @@ import {
   voiceInputBlocksSubmission,
   type VoiceInputState,
 } from "@t3tools/client-runtime/voice-input";
+import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 
 import type { ComposerEditorSelection } from "../../components/ComposerEditor";
 import { useGlobalVoiceInput } from "./VoiceInputProvider";
 import { createVoiceInputTarget } from "./voiceInputSession";
-import { voiceOutbox } from "./voiceOutboxRuntime";
+import { voiceOutbox, voiceSteerHandover } from "./voiceOutboxRuntime";
 
 const IDLE_STATE: VoiceInputState = { phase: "idle", error: null, errorAction: null };
 
 /** Lets a composer use the voice server. Its text lives in the composer draft under ownerKey. */
 export type VoiceServerTarget = {
-  readonly environmentId: string;
+  readonly environmentId: EnvironmentId;
   /** Null while the composer has no thread to send to. */
-  readonly threadId: string | null;
+  readonly threadId: ThreadId | null;
   /** False when the draft holds what a plain text message cannot carry, such as attachments. */
   readonly canSendText: boolean;
   readonly sendsThroughDraft: () => boolean;
   readonly clearDraftText: () => void;
+  /** Whether a message sent right now would steer the running agent, as typed ones do. */
+  readonly steersActiveTurn: () => boolean;
 };
 
 export function useVoiceInputController(input: {
@@ -62,16 +65,29 @@ export function useVoiceInputController(input: {
     if (!captured.ownerKey || captured.disabled) return;
     const { ownerKey, serverTarget } = captured;
     const server = global.server;
+    // Only the service's own environment can receive a message from it.
+    const threadId =
+      serverTarget && server?.environmentId === serverTarget.environmentId
+        ? serverTarget.threadId
+        : null;
     const handoff =
       server && serverTarget
         ? voiceOutbox.createHandoff({
             ownerKey,
-            // Only the service's own environment can receive a message from it.
-            threadId:
-              server.environmentId === serverTarget.environmentId ? serverTarget.threadId : null,
+            threadId,
             sendsThroughDraft: serverTarget.sendsThroughDraft,
             readDraftText: () => captured.readDraftMessage() ?? "",
             clearDraftText: serverTarget.clearDraftText,
+            steerHandover: (item) => {
+              // The agent may have started or finished while the user was speaking.
+              const latest = latestInput.current;
+              const current = latest.ownerKey === ownerKey ? latest.serverTarget : serverTarget;
+              if (threadId === null || !current?.steersActiveTurn()) return null;
+              return voiceSteerHandover(item, true, {
+                environmentId: serverTarget.environmentId,
+                threadId,
+              });
+            },
           })
         : null;
     void session.start({
