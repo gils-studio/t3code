@@ -53,16 +53,19 @@ function Read-Runtime {
   try { Get-Content $RuntimeFile -Raw | ConvertFrom-Json } catch { $null }
 }
 
+# The app exe is a GUI binary: `&` neither waits for it nor sets $LASTEXITCODE, so use Start-Process.
 function Send-Wake([string] $Message) {
   if (-not $NotifyThread) { return }
   $serverEntry = Join-Path $AppDir "resources\server.asar\apps\server\dist\bin.mjs"
-  for ($i = 0; $i -lt 20; $i++) {
+  $outFile = Join-Path $Work "thread-send.out"
+  $errFile = Join-Path $Work "thread-send.err"
+  for ($i = 0; $i -lt 5; $i++) {
     $env:ELECTRON_RUN_AS_NODE = "1"
-    $out = & $Exe $serverEntry thread send $NotifyThread $Message 2>&1
-    $code = $LASTEXITCODE
+    $p = Start-Process -FilePath $Exe -ArgumentList @("`"$serverEntry`"", "thread", "send", $NotifyThread, "`"$Message`"") `
+      -NoNewWindow -Wait -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
     Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
-    Log "thread send exit=$code $($out -join ' ')"
-    if ($code -eq 0) { return }
+    Log "thread send exit=$($p.ExitCode) $(Get-Content $outFile -Raw) $(Get-Content $errFile -Raw)"
+    if ($p.ExitCode -eq 0) { return }
     Start-Sleep -Seconds 15
   }
 }

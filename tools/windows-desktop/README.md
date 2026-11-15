@@ -15,6 +15,7 @@ fleet pull laptop-gerrit t3d release/T3-Code-<version>-x64.exe --to ~/.t3/fork-s
 
 - Windows nodes only. The work tree `C:\fleet\work\t3d` is kept between builds.
 - The nodes have no Rust toolchain, so the build reuses `t3-resource-monitor.exe` from the installed app.
+- The build bakes in T3 Connect's public config (relay, Clerk keys) the way upstream's releases do, so `t3 connect` and the relay work.
 - The build has no update feed (`app-update.yml` is missing), so the app never updates itself to upstream. Updating means building and switching again.
 
 ## Switch
