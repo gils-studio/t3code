@@ -1857,6 +1857,21 @@ const make = Effect.gen(function* () {
       Effect.orElseSucceed(() => false),
     );
 
+  const isGitWorkTree = (cwd: string) =>
+    gitDriver
+      .execute({
+        operation: "OrchestratorMcpService.isGitWorkTree",
+        cwd,
+        args: ["rev-parse", "--is-inside-work-tree"],
+        allowNonZeroExit: true,
+        timeoutMs: 5_000,
+        maxOutputBytes: 4_096,
+      })
+      .pipe(
+        Effect.map((result) => result.exitCode === 0 && result.stdout.trim() === "true"),
+        Effect.orElseSucceed(() => false),
+      );
+
   const resolveScheduledTaskBaseRef = Effect.fn(
     "OrchestratorMcpService.resolveScheduledTaskBaseRef",
   )(function* (cwd: string) {
@@ -1890,6 +1905,8 @@ const make = Effect.gen(function* () {
   )(function* (boundToThread: boolean, projectId: ProjectId) {
     if (boundToThread) return { type: "root" as const };
     const { workspaceRoot } = yield* requireProject(projectId);
+    // A plain folder has no worktrees to provision, so every run would fail before starting.
+    if (!(yield* isGitWorkTree(workspaceRoot))) return { type: "root" as const };
     return {
       type: "worktree" as const,
       baseRef: yield* resolveScheduledTaskBaseRef(workspaceRoot),
