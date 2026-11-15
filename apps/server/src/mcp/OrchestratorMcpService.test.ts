@@ -2779,7 +2779,7 @@ describe("OrchestratorMcpService provider resolution", () => {
     ) =>
       OrchestratorMcpService.layer.pipe(
         Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
-        Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)(git)),
+        Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({ execute: workTree(true), ...git })),
         Layer.provide(
           Layer.mergeAll(
             NodeServices.layer,
@@ -2810,6 +2810,16 @@ describe("OrchestratorMcpService provider resolution", () => {
           ),
         ),
       );
+    const workTree =
+      (inside: boolean): GitVcsDriver.GitVcsDriver["Service"]["execute"] =>
+      () =>
+        Effect.succeed({
+          exitCode: (inside ? 0 : 128) as never,
+          stdout: inside ? "true\n" : "",
+          stderr: inside ? "" : "fatal: not a git repository",
+          stdoutTruncated: false,
+          stderrTruncated: false,
+        });
     const masterRepository: Partial<GitVcsDriver.GitVcsDriver["Service"]> = {
       resolvePrimaryRemoteName: () => Effect.succeed("origin"),
       resolveDefaultBranchName: (cwd, remoteName) =>
@@ -2828,6 +2838,21 @@ describe("OrchestratorMcpService provider resolution", () => {
         assert.deepEqual(yield* Ref.get(saved), [
           { type: "worktree", baseRef: "origin/master", startFromOrigin: true },
         ]);
+      }),
+    );
+
+    it.effect("runs at the root of a project that is not a git repository", () =>
+      Effect.gen(function* () {
+        const saved = yield* Ref.make<ReadonlyArray<ScheduledTask["workspaceStrategy"]>>([]);
+        const mcp = yield* OrchestratorMcpService.OrchestratorMcpService.pipe(
+          Effect.provide(service({ ...masterRepository, execute: workTree(false) }, saved)),
+        );
+        yield* mcp.scheduleTask(client, { projectId, prompt: "Check the build", schedule });
+        yield* mcp.updateScheduledTask(client, {
+          scheduledTaskId: existing.id,
+          bindToCurrentThread: false,
+        });
+        assert.deepEqual(yield* Ref.get(saved), [{ type: "root" }, { type: "root" }]);
       }),
     );
 
