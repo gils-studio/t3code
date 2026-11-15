@@ -187,8 +187,9 @@ and edit before sending.
 Voice input uses on-device speech transcription: Apple's on iOS, and compatible
 Google speech services on Android. When it is unavailable for the device or its
 language, the composer has no microphone button and **Settings → Microphone** says
-voice input isn't available. On Android, keep T3 Code open while recording and
-transcribing.
+voice input isn't available. Recording keeps running when you switch to another
+app, so you can describe what you see there; on Android a notification shows it
+and can stop it. On Android, keep T3 Code open while it transcribes.
 
 The first use may download a speech model and needs a network connection.
 Later transcription works offline for that language. On Android, transcription

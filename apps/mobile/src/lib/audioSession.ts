@@ -70,6 +70,7 @@ export function activateAudioSession(
     if (nativePlayback) return true;
     await setAudioModeAsync({
       allowsRecording: token.kind === "recording",
+      allowsBackgroundRecording: token.kind === "recording",
       interruptionMode: "doNotMix",
       playsInSilentMode: true,
       shouldPlayInBackground: false,
