@@ -56,15 +56,12 @@ function Read-Runtime {
 function Send-Wake([string] $Message) {
   if (-not $NotifyThread) { return }
   $serverEntry = Join-Path $AppDir "resources\server.asar\apps\server\dist\bin.mjs"
-  for ($i = 0; $i -lt 20; $i++) {
-    $env:ELECTRON_RUN_AS_NODE = "1"
-    $out = & $Exe $serverEntry thread send $NotifyThread $Message 2>&1
-    $code = $LASTEXITCODE
-    Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
-    Log "thread send exit=$code $($out -join ' ')"
-    if ($code -eq 0) { return }
-    Start-Sleep -Seconds 15
-  }
+  # One attempt: the CLI can exit non-zero after the message was queued, and a retry queues it again.
+  $env:ELECTRON_RUN_AS_NODE = "1"
+  $out = & $Exe $serverEntry thread send $NotifyThread $Message 2>&1
+  $code = $LASTEXITCODE
+  Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
+  Log "thread send exit=$code $($out -join ' ')"
 }
 
 function Start-App {

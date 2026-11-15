@@ -26,6 +26,12 @@ cp "$RESOURCE_MONITOR" "$RM_DIR/"
 export T3CODE_DESKTOP_REUSE_RESOURCE_MONITOR=1
 # Without an update repository the build has no update feed, so upstream releases never replace it.
 unset GITHUB_REPOSITORY T3CODE_DESKTOP_UPDATE_REPOSITORY
+# T3 Connect's public config, as upstream's releases bake it in. Without it `t3 connect` and the
+# relay are off, so the phones only reach the PC directly. Relay traces stay off.
+export T3CODE_RELAY_URL=${T3CODE_RELAY_URL:-https://relay.t3.codes}
+export T3CODE_CLERK_PUBLISHABLE_KEY=${T3CODE_CLERK_PUBLISHABLE_KEY:-pk_live_Y2xlcmsudDMuY29kZXMk}
+export T3CODE_CLERK_CLI_OAUTH_CLIENT_ID=${T3CODE_CLERK_CLI_OAUTH_CLIENT_ID:-hzxSgY2cH10sDU2r}
+export T3CODE_CLERK_JWT_TEMPLATE=${T3CODE_CLERK_JWT_TEMPLATE:-t3-relay}
 
 node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64
 ls release/*.exe | sed 's/^/INSTALLER /'
