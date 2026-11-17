@@ -561,10 +561,6 @@ export function NewTaskDraftScreen(props: {
     locked: isComposerInteractionLocked,
   });
 
-  function handleStart() {
-    return startTask();
-  }
-
   async function startTask(
     voice?: VoiceThreadStart,
   ): Promise<import("@t3tools/contracts").MessageId | null> {
@@ -700,6 +696,11 @@ export function NewTaskDraftScreen(props: {
     });
     scheduleUnusedComposerAttachmentCleanup(draftSnapshot.attachments);
     return message.messageId;
+  }
+
+  // After startTask: the React Compiler cannot rewrite a reference to a function declared later (#63).
+  function handleStart() {
+    return startTask();
   }
 
   useVoiceThreadStart(flow.draftKey, (voice) => void startTask(voice));
