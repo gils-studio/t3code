@@ -17835,18 +17835,31 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         uuid,
         session_id: WAKE_NATIVE_SESSION,
       });
-    const stopHookFeedback = (uuid: string, condition: string, reason: string) =>
+    const stopHookFeedback = (uuid: string, condition: string | null, reason: string) =>
       claudeSdkFrame({
         type: "user",
         message: {
           role: "user",
-          content: [{ type: "text", text: `Stop hook feedback:\n[${condition}]: ${reason}` }],
+          content: [
+            {
+              type: "text",
+              text: `Stop hook feedback:\n${condition === null ? "" : `[${condition}]: `}${reason}`,
+            },
+          ],
         },
         parent_tool_use_id: null,
         isSynthetic: true,
         uuid,
         session_id: WAKE_NATIVE_SESSION,
       });
+    const stopHookNotices = (events: ReadonlyArray<ProviderAdapter.ProviderAdapterV2Event>) =>
+      events.flatMap((event) =>
+        event.type === "turn_item.updated" &&
+        event.turnItem.type === "system_notice" &&
+        event.turnItem.cause === "stop_hook"
+          ? [event.turnItem.message]
+          : [],
+      );
     const goalStatuses = (events: ReadonlyArray<ProviderAdapter.ProviderAdapterV2Event>) =>
       events.flatMap((event) =>
         event.type === "provider_thread.updated" && event.providerThread.goal != null
@@ -17888,6 +17901,50 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             lastCheck: "One test still fails.",
           },
           { objective: condition, status: "complete", checks: 1 },
+        ]);
+        assert.deepEqual(stopHookNotices(harness.events), []);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(
+            IdAllocator.layer,
+            McpProviderSessions.layer,
+            NodeServices.layer,
+            NodeCrypto.layer,
+          ),
+        ),
+      ),
+    );
+
+    it.effect("marks where a blocking stop hook sent Claude back to work", () =>
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("stop-hook-attempt"),
+            text: "Ship it",
+            attachments: [],
+          }),
+        );
+        for (const frame of [
+          makeAssistantTextFrame({
+            uuid: "stop-hook-report",
+            text: "Shipped, here is the report.",
+          }),
+          stopHookFeedback("stop-hook-plain", null, "Open points without a ticket?"),
+          stopHookFeedback("stop-hook-named", "node hook.mjs", "Wait for the build."),
+          makeAssistantTextFrame({ uuid: "stop-hook-follow-up", text: "Filed one ticket." }),
+          makeResultFrame({ uuid: "stop-hook-result", result: "Filed one ticket." }),
+        ]) {
+          yield* Queue.offer(harness.sdkMessages, frame);
+        }
+        assert.equal((yield* Queue.take(harness.terminalReceipts)).status, "completed");
+        assert.deepEqual(stopHookNotices(harness.events), [
+          "Stop hook: Open points without a ticket?",
+          "Stop hook: Wait for the build.",
         ]);
       }).pipe(
         Effect.scoped,

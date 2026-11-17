@@ -692,11 +692,17 @@ function timelineEntryIsWorkBetweenReplies(entry: TimelineEntry): boolean {
   );
 }
 
+/** The run a blocking stop hook sent back to work, when the entry is that hook's notice. */
+function stopHookNoticeRunId(entry: TimelineEntry): RunId | null {
+  const item = entry.kind === "work" ? entry.entry.projectedItem?.item : undefined;
+  return item?.type === "system_notice" && item.cause === "stop_hook" ? item.runId : null;
+}
+
 /**
  * The last assistant message of each response, plus every message the agent ended a turn with.
  * A stop hook or background task can send the agent back inside the same run, and its short
- * follow-up then comes last; the reply before it, with no work in between, is the report and
- * must stay visible.
+ * follow-up then comes last; the reply before it, followed by a stop hook notice or by the next
+ * reply with no work in between, is the report and must stay visible.
  */
 function deriveTerminalAssistantMessageIds(timelineEntries: ReadonlyArray<TimelineEntry>) {
   const lastAssistantMessageIdByResponseKey = new Map<string, string>();
@@ -706,6 +712,10 @@ function deriveTerminalAssistantMessageIds(timelineEntries: ReadonlyArray<Timeli
 
   for (const timelineEntry of timelineEntries) {
     if (timelineEntry.kind !== "message") {
+      const stopHookRunId = stopHookNoticeRunId(timelineEntry);
+      if (stopHookRunId !== null && previousReply?.responseKey === `turn:${stopHookRunId}`) {
+        turnEndingMessageIds.add(previousReply.id);
+      }
       if (timelineEntryIsWorkBetweenReplies(timelineEntry)) previousReply = null;
       continue;
     }
@@ -897,7 +907,13 @@ function liveSubagentCardEntryIds(entries: ReadonlyArray<TimelineEntry>): Readon
 }
 
 function timelineEntryFoldRunId(entry: TimelineEntry, runlessKey: RunId | null): RunId | null {
-  if (entry.kind === "work" && entry.entry.itemType === "system_notice") return null;
+  if (
+    entry.kind === "work" &&
+    entry.entry.itemType === "system_notice" &&
+    stopHookNoticeRunId(entry) === null
+  ) {
+    return null;
+  }
   if (entry.kind === "message" && entry.message.role === "assistant") {
     return entry.message.runId ?? runlessKey;
   }

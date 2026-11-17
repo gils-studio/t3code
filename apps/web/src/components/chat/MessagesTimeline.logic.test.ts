@@ -1016,7 +1016,41 @@ describe("deriveMessagesTimelineRows", () => {
     ).toBeDefined();
   });
 
-  it("keeps a finished report visible when a background follow-up comes last", () => {
+  const ranCommand = (id: string, at: string) => ({
+    id: `${id}-entry`,
+    kind: "work" as const,
+    createdAt: at,
+    entry: {
+      id,
+      createdAt: at,
+      runId: "turn-1" as never,
+      label: "Ran command",
+      tone: "tool" as const,
+    },
+  });
+  const stopHookNotice = {
+    id: "stop-hook-entry",
+    kind: "work" as const,
+    createdAt: "2026-01-01T00:00:21Z",
+    entry: {
+      id: "stop-hook",
+      createdAt: "2026-01-01T00:00:21Z",
+      runId: "turn-1" as never,
+      label: "Stop hook: Open points?",
+      tone: "info" as const,
+      itemType: "system_notice" as const,
+      projectedItem: {
+        item: { type: "system_notice", cause: "stop_hook", runId: "turn-1" },
+      } as never,
+    },
+  };
+  it.each([
+    ["with no work in between", []],
+    [
+      "after a stop hook and more work",
+      [stopHookNotice, ranCommand("work-2", "2026-01-01T00:01:00Z")],
+    ],
+  ])("keeps a finished report visible when a follow-up comes last %s", (_case, between) => {
     const assistant = (id: string, at: string, text: string) => ({
       id: `${id}-entry`,
       kind: "message" as const,
@@ -1048,19 +1082,9 @@ describe("deriveMessagesTimelineRows", () => {
           },
         },
         assistant("progress", "2026-01-01T00:00:05Z", "Checking the build."),
-        {
-          id: "work-entry-1",
-          kind: "work" as const,
-          createdAt: "2026-01-01T00:00:08Z",
-          entry: {
-            id: "work-1",
-            createdAt: "2026-01-01T00:00:08Z",
-            runId: "turn-1" as never,
-            label: "Ran command",
-            tone: "tool" as const,
-          },
-        },
+        ranCommand("work-1", "2026-01-01T00:00:08Z"),
         assistant("report", "2026-01-01T00:00:20Z", "It is live, here is what changed."),
+        ...between,
         assistant("follow-up", "2026-01-01T00:05:00Z", "The deploy reported above succeeded."),
       ],
       isWorking: false,

@@ -434,7 +434,7 @@ function itemIsProminent(item: OrchestrationV2TurnItem): boolean {
   return (
     item.type === "fork" ||
     item.type === "thread_created" ||
-    item.type === "system_notice" ||
+    (item.type === "system_notice" && item.cause !== "stop_hook") ||
     item.type === "proposed_plan" ||
     item.type === "secret_request" ||
     item.type === "link_request"
@@ -1070,7 +1070,8 @@ const ITEM_TYPES_BETWEEN_REPLIES: ReadonlySet<string> = new Set([
 /**
  * Assistant messages the agent ended a turn with, other than the run's last one. A stop hook or
  * background task can send the agent back inside the same run, and its short follow-up then
- * comes last; the reply before it, with no work in between, is the report and must stay visible.
+ * comes last; the reply before it, followed by a stop hook notice or by the next reply with no
+ * work in between, is the report and must stay visible.
  */
 export function turnEndingAssistantMessageIds(
   feed: ReadonlyArray<ThreadFeedEntry>,
@@ -1079,6 +1080,17 @@ export function turnEndingAssistantMessageIds(
   let previousReply = null as { readonly runId: RunId; readonly id: string } | null;
   for (const entry of feed) {
     if (entry.type !== "message") {
+      const reply = previousReply;
+      const followsStopHook =
+        reply !== null &&
+        entry.type === "activity-group" &&
+        entry.activities.some(
+          ({ projectedItem: { item } }) =>
+            item.type === "system_notice" &&
+            item.cause === "stop_hook" &&
+            item.runId === reply.runId,
+        );
+      if (followsStopHook) ids.add(reply.id);
       const isWork =
         entry.type !== "activity-group" ||
         entry.activities.some(
