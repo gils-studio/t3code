@@ -30,6 +30,13 @@ const listing = (refs: VcsListRefsResult["refs"], isRepo = true): VcsListRefsRes
   totalCount: refs.length,
 });
 
+/**
+ * What a result holds, without its timestamp: AsyncResult.success stamps Date.now(), so comparing two
+ * whole results fails whenever the clock ticks between them (t3code#14).
+ */
+const settledValue = (result: AsyncResult.AsyncResult<unknown, unknown>) =>
+  AsyncResult.isSuccess(result) ? { success: result.value } : result;
+
 function resolve(creation: QueuedThreadCreation, result: VcsListRefsResult) {
   const readRefs = vi.fn(async () => AsyncResult.success(result));
   return {
@@ -62,7 +69,7 @@ describe("resolveQueuedWorktreeBase", () => {
     },
   ])("$name", async ({ refs, expected }) => {
     const { resolved, readRefs } = resolve(offlineWorktree, refs);
-    expect(await resolved).toEqual(AsyncResult.success(expected));
+    expect(settledValue(await resolved)).toEqual({ success: expected });
     expect(readRefs).toHaveBeenCalledWith({
       environmentId,
       input: { cwd: "/repo", refresh: true },
@@ -76,7 +83,7 @@ describe("resolveQueuedWorktreeBase", () => {
       { ...offlineWorktree, workspaceMode: "local" as const },
     ]) {
       const { resolved, readRefs } = resolve(creation, listing([]));
-      expect(await resolved).toEqual(AsyncResult.success(creation));
+      expect(settledValue(await resolved)).toEqual({ success: creation });
       expect(readRefs).not.toHaveBeenCalled();
     }
   });
