@@ -27,6 +27,9 @@ function Log([string] $Text) {
   Add-Content -Path $Log -Value $line -Encoding utf8
 }
 
+# Errors outside the install's own try block would otherwise end the task with no trace.
+trap { Log "FAILED: $($_.Exception.Message)"; exit 1 }
+
 function Get-AppProcesses {
   @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -eq $Exe })
 }
@@ -45,7 +48,7 @@ $BusyThreadsScript = Join-Path $Work "busy-threads.mjs"
 import { DatabaseSync } from "node:sqlite";
 const db = new DatabaseSync(process.argv[2], { readOnly: true });
 for (const row of db.prepare("select distinct thread_id from orchestration_v2_projection_runs where status in ('running','starting','queued','preparing','waiting')").all()) console.log(row.thread_id);
-'@ | Set-Content -Path $QueryScript -Encoding utf8
+'@ | Set-Content -Path $BusyThreadsScript -Encoding utf8
 
 function Get-BusyThreads {
   @(& node --no-warnings $BusyThreadsScript $Db 2>$null | Where-Object { $_ -match '^[0-9a-f-]{36}$' })
