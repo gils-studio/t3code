@@ -62,6 +62,12 @@ const harness = vi.hoisted(() => ({
 }));
 
 vi.mock("react-native", () => ({ Alert: { alert: vi.fn() } }));
+// message-author reads the preferences atom, whose import chain loads the whole app runtime (expo-sqlite,
+// expo-secure-store, expo); none of it runs under Vitest (gils-studio/t3code#14).
+vi.mock("./message-author", () => ({ currentMessageAuthorName: () => undefined }));
+vi.mock("../features/sharing/incoming-share-storage", () => ({
+  loadIncomingShareDrafts: async () => [],
+}));
 
 vi.mock("expo-file-system", () => ({
   Directory: harness.draftFile.Directory,

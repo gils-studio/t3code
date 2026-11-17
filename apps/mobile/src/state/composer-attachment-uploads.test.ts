@@ -22,6 +22,9 @@ const native = vi.hoisted(() => ({
 }));
 
 vi.mock("react-native", () => ({ Alert: { alert: vi.fn() } }));
+// message-author reads the preferences atom, whose import chain loads the whole app runtime (expo-sqlite,
+// expo-secure-store, expo); none of it runs under Vitest (gils-studio/t3code#14).
+vi.mock("./message-author", () => ({ currentMessageAuthorName: () => undefined }));
 vi.mock("@effect/atom-react", () => ({
   useAtomValue: (atom: Parameters<typeof appAtomRegistry.get>[0]) => appAtomRegistry.get(atom),
 }));
