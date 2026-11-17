@@ -46,6 +46,12 @@ const state = vi.hoisted(() => ({
   },
 }));
 vi.mock("react-native", () => ({ Alert: { alert: vi.fn() } }));
+// message-author reads the preferences atom, whose import chain loads the whole app runtime (expo-sqlite,
+// expo-secure-store, expo); none of it runs under Vitest (gils-studio/t3code#14).
+vi.mock("./message-author", () => ({ currentMessageAuthorName: () => undefined }));
+vi.mock("../features/sharing/incoming-share-storage", () => ({
+  loadIncomingShareDrafts: async () => [],
+}));
 vi.mock("@t3tools/client-runtime/state/runtime", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@t3tools/client-runtime/state/runtime")>()),
   runAtomCommand: (_registry: unknown, command: (input: unknown) => unknown, input: unknown) =>
