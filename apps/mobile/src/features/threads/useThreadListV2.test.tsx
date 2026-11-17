@@ -19,7 +19,11 @@ vi.mock("../../state/threads", () => ({
 vi.mock("../../state/atom-registry", () => ({ appAtomRegistry: undefined }));
 // The real hook reads the preferences, whose module loads the native runtime (expo) that vitest cannot
 // load; without team people every thread is on no author shelf, which is what it returns here.
-vi.mock("./messageAuthors", () => ({ useThreadAuthorShelfOf: () => () => null }));
+vi.mock("./messageAuthors", () => {
+  // One function for every render, as the real hook memoises it; the list's memo keys on it.
+  const noShelf = () => null;
+  return { useThreadAuthorShelfOf: () => noShelf };
+});
 
 it("reuses a large thread list across tab renders and updates when its inputs change", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
