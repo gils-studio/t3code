@@ -1020,7 +1020,13 @@ describe("deriveMessagesTimelineRows", () => {
     id: `${id}-entry`,
     kind: "work" as const,
     createdAt: at,
-    entry: { id, createdAt: at, runId: "turn-1" as never, label: "Ran command", tone: "tool" as const },
+    entry: {
+      id,
+      createdAt: at,
+      runId: "turn-1" as never,
+      label: "Ran command",
+      tone: "tool" as const,
+    },
   });
   const stopHookNotice = {
     id: "stop-hook-entry",
@@ -1040,7 +1046,10 @@ describe("deriveMessagesTimelineRows", () => {
   };
   it.each([
     ["with no work in between", []],
-    ["after a stop hook and more work", [stopHookNotice, ranCommand("work-2", "2026-01-01T00:01:00Z")]],
+    [
+      "after a stop hook and more work",
+      [stopHookNotice, ranCommand("work-2", "2026-01-01T00:01:00Z")],
+    ],
   ])("keeps a finished report visible when a follow-up comes last %s", (_case, between) => {
     const assistant = (id: string, at: string, text: string) => ({
       id: `${id}-entry`,

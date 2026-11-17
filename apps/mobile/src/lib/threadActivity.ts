@@ -1086,7 +1086,9 @@ export function turnEndingAssistantMessageIds(
         entry.type === "activity-group" &&
         entry.activities.some(
           ({ projectedItem: { item } }) =>
-            item.type === "system_notice" && item.cause === "stop_hook" && item.runId === reply.runId,
+            item.type === "system_notice" &&
+            item.cause === "stop_hook" &&
+            item.runId === reply.runId,
         );
       if (followsStopHook) ids.add(reply.id);
       const isWork =

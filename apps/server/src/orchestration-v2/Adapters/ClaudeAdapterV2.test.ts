@@ -17930,7 +17930,10 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           }),
         );
         for (const frame of [
-          makeAssistantTextFrame({ uuid: "stop-hook-report", text: "Shipped, here is the report." }),
+          makeAssistantTextFrame({
+            uuid: "stop-hook-report",
+            text: "Shipped, here is the report.",
+          }),
           stopHookFeedback("stop-hook-plain", null, "Open points without a ticket?"),
           stopHookFeedback("stop-hook-named", "node hook.mjs", "Wait for the build."),
           makeAssistantTextFrame({ uuid: "stop-hook-follow-up", text: "Filed one ticket." }),
