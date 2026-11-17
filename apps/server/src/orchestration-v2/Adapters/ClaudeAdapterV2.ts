@@ -1843,6 +1843,34 @@ function claudeWritesUpdatesAsThinking(model: string): boolean {
 // In SDK mode, /goal appears only in transcripts: command output names it and Stop hooks report unmet checks.
 const CLAUDE_GOAL_SET_PREFIX = "Goal set: ";
 const CLAUDE_GOAL_ACTIVE = /^Goal active: ([\s\S]+?) \((?:not yet evaluated|(\d+) turns?)\)/u;
+const CLAUDE_STOP_HOOK_FEEDBACK_PREFIX = "Stop hook feedback:\n";
+
+function syntheticClaudeRootUserText(message: SDKMessage): string | null {
+  if (
+    message.type !== "user" ||
+    message.parent_tool_use_id !== null ||
+    message.isSynthetic !== true
+  ) {
+    return null;
+  }
+  const content = message.message.content;
+  return typeof content === "string"
+    ? content
+    : content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
+}
+
+/** The reason of a blocking Stop hook that sent Claude back to work, unless it is a /goal check. */
+function claudeStopHookReason(
+  goal: OrchestrationV2ProviderGoal | null,
+  message: SDKMessage,
+): string | null {
+  const text = syntheticClaudeRootUserText(message);
+  if (text === null || !text.startsWith(CLAUDE_STOP_HOOK_FEEDBACK_PREFIX)) return null;
+  const feedback = text.slice(CLAUDE_STOP_HOOK_FEEDBACK_PREFIX.length);
+  if (goal !== null && feedback.startsWith(`[${goal.objective}]: `)) return null;
+  // Newer CLIs prefix the reason with the hook's command in brackets.
+  return feedback.replace(/^\[[^\]\n]*\]: /u, "").trim();
+}
 
 function nextClaudeGoal(
   current: OrchestrationV2ProviderGoal | null,
@@ -1867,20 +1895,9 @@ function nextClaudeGoal(
       checks: Number(active[2] ?? 0),
     };
   }
-  if (
-    message.type !== "user" ||
-    message.parent_tool_use_id !== null ||
-    message.isSynthetic !== true ||
-    current === null
-  ) {
-    return undefined;
-  }
-  const prefix = `Stop hook feedback:\n[${current.objective}]: `;
-  const content = message.message.content;
-  const text =
-    typeof content === "string"
-      ? content
-      : content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
+  const text = current === null ? null : syntheticClaudeRootUserText(message);
+  if (current === null || text === null) return undefined;
+  const prefix = `${CLAUDE_STOP_HOOK_FEEDBACK_PREFIX}[${current.objective}]: `;
   if (!text.startsWith(prefix)) return undefined;
   return {
     ...current,
@@ -8598,7 +8615,47 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             yield* liveQuery.query.close.pipe(Effect.ignore);
             return;
           }
+          const stopHookReason = claudeStopHookReason(
+            goalsByNativeThread.get(liveQuery.nativeThreadId) ?? null,
+            message,
+          );
           yield* trackClaudeGoal({ nativeThreadId: liveQuery.nativeThreadId, context, message });
+          if (stopHookReason !== null) {
+            const now = yield* DateTime.now;
+            const nativeItemId = message.uuid ?? `stop-hook:${context.providerTurnId}:${now}`;
+            const notice = stopHookReason ? `Stop hook: ${stopHookReason}` : "Stop hook";
+            yield* emitProviderEvent({
+              type: "turn_item.updated",
+              driver: CLAUDE_PROVIDER,
+              turnItem: {
+                id: idAllocator.derive.turnItemFromProviderItem({
+                  driver: CLAUDE_PROVIDER,
+                  nativeItemId,
+                }),
+                threadId: context.input.threadId,
+                runId: context.input.runId,
+                nodeId: context.input.rootNodeId,
+                providerThreadId: context.input.providerThread.id,
+                providerTurnId: context.providerTurnId,
+                nativeItemRef: {
+                  driver: CLAUDE_PROVIDER,
+                  nativeId: nativeItemId,
+                  strength: message.uuid === undefined ? "weak" : "strong",
+                },
+                parentItemId: null,
+                ordinal: yield* resolveItemOrdinal(context, nativeItemId),
+                type: "system_notice",
+                status: "completed",
+                title: "Stop hook",
+                message: notice,
+                cause: "stop_hook",
+                startedAt: now,
+                completedAt: now,
+                updatedAt: now,
+              },
+            });
+            return;
+          }
 
           if (message.type === "stream_event" && !message.parent_tool_use_id) {
             const event = message.event;

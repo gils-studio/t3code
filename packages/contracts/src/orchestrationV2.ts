@@ -1724,6 +1724,8 @@ export const OrchestrationV2TurnItem = Schema.Union([
     ...OrchestrationV2TurnItemBaseFields,
     type: Schema.Literal("system_notice"),
     message: Schema.String,
+    /** A blocking Stop hook sent the agent back to work; the reply before it ended a turn. */
+    cause: Schema.optional(Schema.Literal("stop_hook")),
   }),
   Schema.Struct({
     ...OrchestrationV2TurnItemBaseFields,
@@ -2553,6 +2555,8 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     ...OrchestrationV2TurnItemJsonBaseFields,
     type: Schema.Literal("system_notice"),
     message: Schema.String,
+    /** A blocking Stop hook sent the agent back to work; the reply before it ended a turn. */
+    cause: Schema.optional(Schema.Literal("stop_hook")),
   }),
   Schema.Struct({
     ...OrchestrationV2TurnItemJsonBaseFields,

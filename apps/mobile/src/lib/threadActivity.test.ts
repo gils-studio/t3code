@@ -909,24 +909,38 @@ describe("buildThreadFeed", () => {
     ]);
   });
 
-  it("keeps a finished report visible when a background follow-up comes last", () => {
-    const feed = buildThreadFeed([
-      projected(userMessage(), 0),
-      projected(
+  const stopHookNotice = {
+    ...base("item-stop-hook", "2026-06-20T00:00:02.500Z", 2),
+    type: "system_notice" as const,
+    message: "Stop hook: Open points?",
+    cause: "stop_hook" as const,
+  };
+  it.each([
+    ["with no work in between", [], []],
+    [
+      "after a stop hook and more work",
+      [stopHookNotice, command("2026-06-20T00:00:02.700Z")],
+      ["run-fold:run-1"],
+    ],
+  ])("keeps a finished report visible when a follow-up comes last %s", (_case, between, fold) => {
+    const feed = buildThreadFeed(
+      [
+        userMessage(),
         {
           ...assistantMessage("2026-06-20T00:00:02.000Z"),
           id: TurnItemId.make("item-opening"),
           messageId: MessageId.make("message-opening"),
           text: "The result is ready.",
         },
-        1,
-      ),
-      projected(assistantMessage(), 2),
-    ]);
+        ...between,
+        assistantMessage(),
+      ].map((item, position) => projected(item, position)),
+    );
 
     const presented = deriveThreadFeedPresentation(feed, null, new Set());
     expect(presented.map((entry) => entry.id)).toEqual([
       "message-user",
+      ...fold,
       "message-opening",
       "message-assistant",
     ]);
