@@ -940,8 +940,8 @@ describe("buildThreadFeed", () => {
     const presented = deriveThreadFeedPresentation(feed, null, new Set());
     expect(presented.map((entry) => entry.id)).toEqual([
       "message-user",
-      ...fold,
       "message-opening",
+      ...fold,
       "message-assistant",
     ]);
   });
