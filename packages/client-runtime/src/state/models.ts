@@ -156,6 +156,8 @@ export interface EnvironmentThreadShell {
   readonly blockedOnThreadWait?: boolean;
   readonly latestUserMessageAt: string | null;
   readonly latestUserAuthoredMessageAt?: string | null;
+  /** Who wrote its messages, from their markers. Absent from older servers. */
+  readonly messageAuthors?: ReadonlyArray<string>;
   readonly hasPendingApprovals: boolean;
   readonly hasPendingUserInput: boolean;
   readonly pendingSubagentRequest?: PendingSubagentRequest | null;
@@ -306,6 +308,7 @@ export function presentThreadShell(
     ...(thread.latestUserAuthoredMessageAt === undefined
       ? {}
       : { latestUserAuthoredMessageAt: nullableIso(thread.latestUserAuthoredMessageAt) }),
+    ...(thread.messageAuthors === undefined ? {} : { messageAuthors: thread.messageAuthors }),
     hasPendingApprovals:
       thread.pendingRuntimeRequest !== null &&
       thread.pendingRuntimeRequest.kind !== "user_input" &&
