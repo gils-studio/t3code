@@ -94,6 +94,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import type * as Statement from "effect/sql/Statement";
 
 import { MCP_APP_OUTPUT_KEY } from "@t3tools/shared/mcpApp";
+import { messageAuthorsOf, messageMarkerIsTrusted } from "@t3tools/shared/messageMarker";
 import { threadHtmlRenderAttachmentIds } from "../attachmentStore.ts";
 import {
   isThreadHistoryUserTurn,
@@ -1032,6 +1033,8 @@ type ShellThreadRow = {
   readonly pending_link_request_payload_json: string | null;
   readonly latest_user_message_at: string | null;
   readonly latest_user_authored_message_at: string | null;
+  /** JSON array of the distinct marker prefixes that open the thread's user messages. */
+  readonly message_author_markers_json: string | null;
   readonly has_actionable_proposed_plan: number;
 };
 
@@ -1072,6 +1075,7 @@ const encodeTimelineSources = Schema.encodeEffect(
   ),
 );
 const encodeIdList = Schema.encodeSync(Schema.fromJsonString(Schema.Array(Schema.String)));
+const decodeIdList = Schema.decodeSync(Schema.fromJsonString(Schema.Array(Schema.String)));
 
 // Empty filters still scan SQLite rows; short-circuit them, including turnItemTypes: [].
 const matchesNothing = (...filters: ReadonlyArray<ReadonlyArray<unknown> | undefined>) =>
@@ -1650,6 +1654,11 @@ export function threadShellFromProjection(
     latestVisibleMessage: null,
     latestUserMessageAt: latestUserMessage?.updatedAt ?? null,
     latestUserAuthoredMessageAt,
+    messageAuthors: messageAuthorsOf(
+      projection.messages
+        .filter((message) => message.role === "user" && messageMarkerIsTrusted(message))
+        .map((message) => message.text),
+    ),
     hasActionableProposedPlan: projection.plans.some(
       (plan) => plan.kind === "proposed_plan" && plan.status === "active",
     ),
@@ -1761,6 +1770,7 @@ type ShellThreadState = {
   readonly pendingRuntimeRequest: OrchestrationV2PendingRuntimeRequestSummary | null;
   readonly latestUserMessageAt: DateTime.Utc | null;
   readonly latestUserAuthoredMessageAt: DateTime.Utc | null;
+  readonly messageAuthors: ReadonlyArray<string>;
   readonly hasActionableProposedPlan: boolean;
   readonly pendingBackgroundTasks: OrchestrationV2ThreadShell["pendingBackgroundTasks"];
   readonly providerInstanceHistory: OrchestrationV2ThreadShell["providerInstanceHistory"];
@@ -1924,6 +1934,7 @@ function shellFromState(input: {
     latestVisibleMessage: null,
     latestUserMessageAt: input.state.latestUserMessageAt,
     latestUserAuthoredMessageAt: input.state.latestUserAuthoredMessageAt,
+    messageAuthors: input.state.messageAuthors,
     hasActionableProposedPlan: input.state.hasActionableProposedPlan,
     pendingBackgroundTasks: input.state.pendingBackgroundTasks,
     providerInstanceHistory: input.state.providerInstanceHistory,
@@ -6258,6 +6269,22 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 ORDER BY message.updated_at DESC, message.message_id DESC
                 LIMIT 1
               ) AS latest_user_authored_message_at,
+              (
+                SELECT json_group_array(marker) FROM (
+                  SELECT DISTINCT substr(text, 1, instr(text, ']') + 2) AS marker
+                  FROM (
+                    SELECT
+                      json_extract(message.payload_json, '$.text') AS text,
+                      json_extract(message.payload_json, '$.createdBy') AS created_by,
+                      json_extract(message.payload_json, '$.senderThreadId') AS sender_thread_id
+                    FROM orchestration_v2_projection_messages message
+                    WHERE message.thread_id = t.thread_id
+                      AND message.role = 'user'
+                  )
+                  WHERE (text LIKE '[Message from %' OR text LIKE '[Voice message from %')
+                    AND (created_by IS NOT 'agent' OR sender_thread_id IS NULL)
+                )
+              ) AS message_author_markers_json,
               EXISTS (
                 SELECT 1
                 FROM orchestration_v2_projection_plans plan
@@ -6856,6 +6883,11 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               ? null
               : DateTime.makeUnsafe(row.latest_user_message_at),
           latestUserAuthoredMessageAt,
+          messageAuthors: messageAuthorsOf(
+            row.message_author_markers_json === null
+              ? []
+              : decodeIdList(row.message_author_markers_json),
+          ),
           hasActionableProposedPlan: row.has_actionable_proposed_plan === 1,
           pendingBackgroundTasks,
           providerInstanceHistory: providerInstanceHistoryForShell({

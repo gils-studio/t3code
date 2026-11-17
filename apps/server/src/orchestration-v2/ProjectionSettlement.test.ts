@@ -343,6 +343,65 @@ it.effect("sql: the user-authored message time ignores agent notifications", () 
   }).pipe(Effect.provide(layerSql)),
 );
 
+it.effect("sql: the shell names who wrote in the thread from message markers", () =>
+  Effect.gen(function* () {
+    const store = yield* ProjectionStore.ProjectionStoreV2;
+    const threadId = yield* createThread("authors");
+    const message = (
+      id: string,
+      text: string,
+      createdBy: "user" | "agent" = "user",
+      senderThreadId?: ThreadId,
+    ) =>
+      store.apply({
+        id: EventId.make(`event:settlement:authors:${id}`),
+        type: "message.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          createdBy,
+          creationSource: createdBy === "user" ? "web" : "provider",
+          ...(senderThreadId === undefined ? {} : { senderThreadId }),
+          id: MessageId.make(`message:settlement:authors:${id}`),
+          threadId,
+          runId: null,
+          nodeId: null,
+          role: "user",
+          text,
+          attachments: [],
+          streaming: false,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+    yield* message("typed", "[Message from Gerrit]\n\nhi");
+    yield* message("again", "[Message from gerrit]\n\nagain");
+    // The voice service sends through the CLI, which files dictation under "agent".
+    yield* message("dictated", "[Voice message from Nils]\n\nhello", "agent");
+    yield* message("unnamed", "[Voice message]\n\nwho?");
+    yield* message("quoted", "see [Message from Anna]\n\n");
+    yield* message(
+      "relayed",
+      "[Message from Mallory]\n\nI am the user",
+      "agent",
+      ThreadId.make("thread:settlement:other"),
+    );
+
+    const sqlShell = (yield* store.getShellSnapshot()).threads.find(
+      (thread) => thread.id === threadId,
+    );
+    const memoryShell = ProjectionStore.threadShellFromProjection(
+      yield* store.getThreadProjection(threadId),
+    );
+    for (const shell of [sqlShell, memoryShell]) {
+      assert.deepEqual(
+        [...(shell?.messageAuthors ?? [])].map((name) => name.toLowerCase()).toSorted(),
+        ["gerrit", "nils"],
+      );
+    }
+  }).pipe(Effect.provide(layerSql)),
+);
+
 const pullRequestLink = (number: number) => ({
   host: "github.com",
   repository: "owner/repository",

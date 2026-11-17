@@ -15,6 +15,11 @@ import {
 } from "@t3tools/shared/composerContextReferences";
 import { filePreviewKind } from "@t3tools/shared/filePreview";
 import { imageMimeType } from "@t3tools/shared/image";
+import {
+  messageMarkerIsTrusted,
+  normalizeMessageAuthor,
+  parseMessageMarker,
+} from "@t3tools/shared/messageMarker";
 import { videoMimeType } from "@t3tools/shared/video";
 
 /** The working row while T3 Code's own compaction runs. */
@@ -42,27 +47,10 @@ export const voiceMessagePrefix = (speaker?: string | null) =>
 /** Tells the agent who typed the message; people see the name under it instead. */
 const typedMessagePrefix = (author: string) => `[Message from ${author}]\n\n`;
 
-const MESSAGE_MARKER =
-  /^\[(?:Voice message(?: from ([^\]\r\n]+))?|Message from ([^\]\r\n]+))\]\n\n/;
-
-/** Who a marker names and whether it marks dictation, or null for unmarked text. */
-function parseMessageMarker(text: string): {
-  readonly length: number;
-  readonly author: string | undefined;
-  readonly voice: boolean;
-} | null {
-  const match = MESSAGE_MARKER.exec(text);
-  if (match === null) return null;
-  const author = (match[1] ?? match[2])?.trim();
-  return { length: match[0].length, author: author || undefined, voice: match[2] === undefined };
-}
-
 export const stripMessageMarker = (text: string) =>
   text.slice(parseMessageMarker(text)?.length ?? 0);
 
-/** A name that fits in a marker: one line, no closing bracket. */
-export const normalizeMessageAuthor = (name: string | null | undefined) =>
-  name?.replace(/[\]\r\n]/g, "").trim() || undefined;
+export { normalizeMessageAuthor };
 
 /**
  * Names the author for the agent, unless the text already carries a marker or is a slash command,
@@ -152,10 +140,8 @@ export function resolveUserMessagePresentation(message: {
       scheduledTaskId: legacyTaskId === undefined ? undefined : ScheduledTaskId.make(legacyTaskId),
     };
   }
-  // The voice service sends through T3's CLI, which files the user's words under "agent".
-  // Agents in a thread always carry a sender, so they cannot pass as the user this way.
   const marker = parseMessageMarker(message.text);
-  if (marker !== null && (message.createdBy !== "agent" || message.senderThreadId === undefined)) {
+  if (marker !== null && messageMarkerIsTrusted(message)) {
     const text = message.text.slice(marker.length);
     return {
       text: isAttachmentOnlyBootstrapPrompt(text) ? "" : text,
