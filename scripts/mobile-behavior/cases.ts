@@ -73,6 +73,23 @@ export const CASES: ReadonlyArray<MobileBehaviorCase> = [
     ],
   },
   {
+    id: "scroll-up-while-streaming-stays-put",
+    area: "scroll",
+    kind: "guard",
+    source: "gils-studio/t3code#65",
+    experience:
+      "Scrolling up while a reply streams, the chat jumps around or snaps back to the latest message.",
+    scenario: "scrollUpWhileStreaming",
+    key: "backwardPx",
+    checks: [
+      { metric: "movedPx", min: 300 },
+      { metric: "backwardPx", max: 24 },
+      { metric: "teleports", equals: 0 },
+      { metric: "holdMovedPx", max: 4 },
+      { metric: "followingAfter", equals: false },
+    ],
+  },
+  {
     id: "send-in-long-thread-stays-at-end",
     area: "scroll",
     kind: "guard",

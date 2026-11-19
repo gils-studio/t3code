@@ -50,7 +50,14 @@ const openThread = Effect.fn("scenario.openThread")(function* (
 /** Screen size in points, and the x of the thread column (the right column in split view). */
 const geometry = Effect.fn("scenario.geometry")(function* (ctx: ScenarioContext) {
   const nodes = yield* ctx.device.nodes;
-  const rect = nodes[0]?.rect ?? { x: 0, y: 0, width: 400, height: 870 };
+  // iOS lists the app window first; Android starts with status bar items, so take the largest.
+  const rect = nodes.reduce<AxNode["rect"]>(
+    (largest, node) =>
+      node.rect && (!largest || node.rect.width * node.rect.height > largest.width * largest.height)
+        ? node.rect
+        : largest,
+    undefined,
+  ) ?? { x: 0, y: 0, width: 400, height: 870 };
   const state = yield* ctx.device.state;
   return {
     width: rect.width,
@@ -192,6 +199,41 @@ export const SCENARIOS = {
       settledFromEndPx: settledFromEnd(recording.feed),
       contentGrewPx: (recording.feed.at(-1)?.content ?? 0) - (recording.feed[0]?.content ?? 0),
       followingAtEnd: after.feed?.following === true,
+    } satisfies Metrics;
+  }, failure),
+
+  /**
+   * A reply streams at the end; the reader drags up a little, then flings further up, and
+   * lets go. Nothing but their own drags may move the feed, during the flings or after.
+   */
+  scrollUpWhileStreaming: Effect.fn("scenario.scrollUpWhileStreaming")(function* (
+    ctx: ScenarioContext,
+  ) {
+    yield* openThread(ctx, ctx.fixtures.longThread);
+    yield* startStream(ctx, ctx.fixtures.longThread, "[[eval:stream:6000:40]]");
+    yield* Effect.sleep("1500 millis");
+    const { height, threadX } = yield* geometry(ctx);
+    const drags = yield* recordFor(
+      ctx,
+      true,
+      Effect.gen(function* () {
+        yield* ctx.device.swipe(threadX, Math.round(height * 0.45), Math.round(height * 0.6));
+        yield* Effect.sleep("2 seconds");
+        for (let fling = 0; fling < 2; fling++)
+          yield* ctx.device.swipe(threadX, Math.round(height * 0.35), Math.round(height * 0.75));
+        yield* Effect.sleep("1500 millis");
+      }),
+    );
+    const hold = yield* recordFor(ctx, true, Effect.sleep("4 seconds"));
+    const after = yield* ctx.device.state;
+    yield* ctx.env.interruptAll();
+    const motion = feedMotion(drags.feed, 1);
+    const still = feedMotion(hold.feed, 0);
+    return {
+      ...motion,
+      holdMovedPx: still.movedPx ?? null,
+      holdFromEndPx: still.finalFromEndPx ?? null,
+      followingAfter: after.feed?.following === true,
     } satisfies Metrics;
   }, failure),
 

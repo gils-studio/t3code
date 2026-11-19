@@ -172,8 +172,13 @@ export function makeDevice(options: DeviceOptions) {
           ) as {
             id?: number;
             result?: { result?: { value?: unknown }; exceptionDetails?: unknown };
+            error?: { message?: string };
           };
           if (reply.id !== 1) continue;
+          if (reply.error)
+            return yield* new DeviceError({
+              message: `${expression.slice(0, 80)} failed in the inspector: ${reply.error.message ?? JSON.stringify(reply.error)}`,
+            });
           if (reply.result?.exceptionDetails)
             return yield* new DeviceError({
               message: `${expression} threw ${JSON.stringify(reply.result.exceptionDetails).slice(0, 400)}`,

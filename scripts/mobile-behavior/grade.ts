@@ -53,6 +53,7 @@ export function frameStats(
 
 /** Fastest real fling step: about 8000 pt/s at 60 Hz. A bigger one-frame move is a jump. */
 export const TELEPORT_PX = 400;
+const FRAME_MS = 1000 / 60;
 
 /**
  * How visible rows moved between JS frames. A row's screen y is its list position minus the
@@ -78,7 +79,9 @@ export function feedMotion(samples: ReadonlyArray<FeedSample>, direction: 1 | -1
       step = (before.scroll ?? 0) - (after.scroll ?? 0);
     moved += Math.abs(step);
     largest = Math.max(largest, Math.abs(step));
-    if (Math.abs(step) > TELEPORT_PX) teleports++;
+    // A busy JS thread samples a fling every few frames; only a move faster than any fling is a jump.
+    const frames = Math.max(1, Math.round(((after.at ?? 0) - (before.at ?? 0)) / FRAME_MS));
+    if (Math.abs(step) > TELEPORT_PX * frames) teleports++;
     if (direction !== 0) backward = Math.max(backward, -step * direction);
   }
   const fromEnd = samples.flatMap((sample) =>

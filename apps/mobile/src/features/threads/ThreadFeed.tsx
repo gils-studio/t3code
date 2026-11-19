@@ -215,6 +215,7 @@ import {
 } from "../../lib/threadActivity";
 import type { ThreadContentPresentation } from "./threadContentPresentation";
 import {
+  isThreadFeedReleaseAtEnd,
   resolveThreadFeedLiveFollow,
   resolveThreadFeedReflowAnchor,
   resolveThreadFeedReflowOffset,
@@ -3309,19 +3310,25 @@ export const ThreadFeed = memo(function ThreadFeed({
       userScrollSessionActive,
     });
   };
+  const releaseIsAtEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const listState = listRef.current?.getState();
+    return listState
+      ? isThreadFeedReleaseAtEnd(listState, event.nativeEvent.contentOffset.y)
+      : false;
+  };
   // Zero release velocity may still produce momentum; wait for native detection before ending the session.
-  const handleScrollEndDrag = () => {
+  const handleScrollEndDrag = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     clearUserScrollSettle();
-    const releaseIsAtEnd = listRef.current?.getState().isAtEnd ?? false;
-    userScrollSettleTimerRef.current = setTimeout(() => finishUserScroll(releaseIsAtEnd), 160);
+    const atEnd = releaseIsAtEnd(event);
+    userScrollSettleTimerRef.current = setTimeout(() => finishUserScroll(atEnd), 160);
   };
   const handleMomentumScrollBegin = () => {
     if (userScrollSessionRef.current) {
       clearUserScrollSettle();
     }
   };
-  const handleMomentumScrollEnd = () => {
-    finishUserScroll();
+  const handleMomentumScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    finishUserScroll(releaseIsAtEnd(event));
   };
 
   const feedThreadKey = scopedThreadKey(props.environmentId, props.threadId);

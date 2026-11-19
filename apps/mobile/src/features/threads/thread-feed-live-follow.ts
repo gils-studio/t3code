@@ -68,6 +68,17 @@ export function resolveThreadFeedSubmissionAnchor<AnchorId>(input: {
   return input.queuedMessageCount > 0 ? null : input.submittedMessageId;
 }
 
+/**
+ * Whether a drag or fling let go at the feed's end. The list's own check reads the last scroll it
+ * processed, which trails a fast drag while streaming keeps JS busy; the release event's offset does not.
+ */
+export function isThreadFeedReleaseAtEnd(
+  list: { readonly isAtEnd: boolean; readonly scroll: number },
+  releaseOffset: number,
+) {
+  return list.isAtEnd && releaseOffset >= list.scroll - 1;
+}
+
 export function resolveThreadFeedLiveFollow(
   current: boolean,
   event: ThreadFeedLiveFollowEvent,
