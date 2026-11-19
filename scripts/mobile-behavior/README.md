@@ -14,13 +14,20 @@ vp run mobile:behavior --device iphone-18-pro --samples 1 --case scroll-up-never
 vp run mobile:behavior --list                             # devices and cases
 ```
 
+On Android, run one device with `scripts/mobile-behavior/run.ts`, pointed at a running emulator or phone with the dev client installed (`vp run mobile:install android`) and a Metro started with `EXPO_PUBLIC_T3_BEHAVIOR_PROBE=1`. A Metro on `127.0.0.1` reaches the device through `adb reverse`, which the run sets up; `--host` is the address the device uses to reach this machine's eval server (`10.0.2.2` from an emulator).
+
+```sh
+node scripts/mobile-behavior/run.ts --platform android --device emulator-5554 --label android \
+  --metro http://127.0.0.1:8081 --host 10.0.2.2 --out artifacts/mobile-behavior/android
+```
+
 Output lands in `artifacts/mobile-behavior/<run>/`: `summary.md` is the scoreboard. Each device's folder holds `results.jsonl` (one row per case sample), `run.log`, `metro.log`, and the server under `env/`. A full run takes about 15 minutes.
 
 A case fails when half or more of its graded samples fail, and is `incomplete` when errors outnumber graded samples. The run fails on a `guard` or `control` case that fails or is incomplete. `bad` cases reproduce known bugs and fail until those are fixed.
 
 ## Metrics
 
-- **Scroll.** The probe reads the thread list's state on every JS frame and records each visible row's y on screen. `backwardPx` is the largest move against the drag. `teleports` counts one-frame moves over 400 pt, faster than a real fling. `maxFromEndPx` is the distance from the latest message.
+- **Scroll.** The probe reads the thread list's state on every JS frame and records each visible row's y on screen. `backwardPx` is the largest move against the drag. `teleports` counts moves over 400 pt per frame, faster than a real fling; a busy JS thread that samples every few frames gets that budget per frame it skipped. `maxFromEndPx` is the distance from the latest message.
 - **Jank.** JS-thread frames from `requestAnimationFrame` in the probe, UI-thread frames from a worklet loop. Simulators render at 60 Hz, and injected swipes load the simulator's UI thread, so swipe cases grade JS frames only.
 - **Composer.** The draft store, the editor's text from the accessibility tree, whether it expanded, and whether the keyboard is up.
 - **Status.** Each Home row's status from the app's own `resolveThreadListV2Status`, and the Working shelf count, against server state.

@@ -36,6 +36,12 @@ it("reads row motion on screen, so an offset change that keeps content still is 
 
   const teleport = [rows({ a: 100 }), rows({ a: 1300 })];
   expect(feedMotion(teleport, 1)).toMatchObject({ teleports: 1, largestStepPx: 1200 });
+  // A busy JS thread samples a fling 600 ms apart; that is fling speed, not a jump.
+  const sparse = [
+    { ...rows({ a: 100 }), at: 0 },
+    { ...rows({ a: 1300 }), at: 600 },
+  ];
+  expect(feedMotion(sparse, 1)).toMatchObject({ teleports: 0, largestStepPx: 1200 });
 
   // A jump past every visible row leaves no shared row; the offset change is the move.
   const offset = (scroll: number, entries: Record<string, number>) => ({

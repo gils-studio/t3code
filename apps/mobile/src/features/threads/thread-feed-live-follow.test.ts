@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  isThreadFeedReleaseAtEnd,
   resolveThreadFeedLiveFollow,
   resolveThreadFeedReflowAnchor,
   resolveThreadFeedReflowOffset,
@@ -196,6 +197,13 @@ describe("resolveThreadFeedLiveFollow", () => {
         userScrollSessionActive: true,
       }),
     ).toBe(false);
+  });
+
+  it("reads a release at the end from where the finger let go, not the list's last scroll", () => {
+    const list = { isAtEnd: true, scroll: 14_963 };
+    expect(isThreadFeedReleaseAtEnd(list, 14_963)).toBe(true);
+    expect(isThreadFeedReleaseAtEnd(list, 14_299)).toBe(false);
+    expect(isThreadFeedReleaseAtEnd({ isAtEnd: false, scroll: 14_299 }, 14_299)).toBe(false);
   });
 });
 

@@ -90,15 +90,22 @@ const command = Command.make(
     out: Flag.String("out").pipe(Flag.withDescription("Directory for results and run state.")),
     device: Flag.String("device").pipe(
       Flag.withDescription(
-        "Simulator UDID; leave out for a Simlock lease, whose gateway picks it.",
+        "Simulator UDID or Android serial; leave out for a Simlock lease, whose gateway picks it.",
       ),
       Flag.withDefault(""),
     ),
+    platform: Flag.Literals("platform", ["ios", "android"] as const).pipe(
+      Flag.withDefault<"ios" | "android">("ios"),
+    ),
     deviceConfig: Flag.String("device-config").pipe(
-      Flag.withDescription("The --config path device_open returned for this device."),
+      Flag.withDescription(
+        "The --config path device_open returned; leave out for a local Android emulator.",
+      ),
+      Flag.optional,
     ),
     deviceSession: Flag.String("device-session").pipe(
       Flag.withDescription("The --session name device_open returned for this device."),
+      Flag.withDefault("mobile-behavior"),
     ),
     deviceName: Flag.String("device-name").pipe(
       Flag.withDescription(
@@ -137,6 +144,12 @@ const command = Command.make(
       ),
       Flag.optional,
     ),
+    metro: Flag.String("metro").pipe(
+      Flag.withDescription(
+        "A running Metro with EXPO_PUBLIC_T3_BEHAVIOR_PROBE=1, e.g. on a machine with more memory; leave out to start one here.",
+      ),
+      Flag.optional,
+    ),
   },
   Effect.fn("mobileBehavior.main")(function* (flags) {
     const out = NodePath.resolve(flags.out);
@@ -165,15 +178,17 @@ const command = Command.make(
     yield* Console.error(`Seeding a 60-turn thread on ${env.origin}...`);
     const longThread = yield* env.longThread(`Long settled thread ${tag}`, 60);
 
-    const metro = yield* startMetro(host, out);
+    const metro = Option.isSome(flags.metro) ? flags.metro.value : yield* startMetro(host, out);
     const device = makeDevice({
       agentDevice: flags.agentDevice,
       targetArgs: [
         "--platform",
-        "ios",
-        ...(flags.device ? ["--udid", flags.device] : []),
-        "--config",
-        flags.deviceConfig,
+        flags.platform,
+        ...(flags.device ? [flags.platform === "ios" ? "--udid" : "--serial", flags.device] : []),
+        ...Option.match(flags.deviceConfig, {
+          onNone: () => [],
+          onSome: (config) => ["--config", config],
+        }),
         "--session",
         flags.deviceSession,
       ],
@@ -183,6 +198,14 @@ const command = Command.make(
     yield* Console.error(`Opening the dev client against ${metro}...`);
     // agent-device answers iOS's "Open in" prompt; the flags keep dev-menu chrome off the app.
     const metroUrl = new URL(metro);
+    // A Metro on this machine's loopback (or tunnelled to it) reaches the emulator through adb.
+    if (flags.platform === "android" && ["127.0.0.1", "localhost"].includes(metroUrl.hostname))
+      NodeChildProcess.execFileSync("adb", [
+        ...(flags.device ? ["-s", flags.device] : []),
+        "reverse",
+        `tcp:${metroUrl.port}`,
+        `tcp:${metroUrl.port}`,
+      ]);
     const launchUrl = `${SCHEME}://expo-development-client/?url=${encodeURIComponent(metro)}&disableOnboarding=1&__expo_disable_fab=1&__expo_disable_auto_launch=1`;
     yield* device
       .run(
@@ -206,7 +229,8 @@ const command = Command.make(
         .pipe(Effect.orElseSucceed(() => ""));
       if (loaded === "object") break;
       // iOS asks before a URL opens another app; busy hosts can miss the first accept.
-      if (attempt % 5 === 0) yield* device.acceptOpenPrompt.pipe(Effect.ignore);
+      if (flags.platform === "ios" && attempt % 5 === 0)
+        yield* device.acceptOpenPrompt.pipe(Effect.ignore);
       if (attempt > 120)
         return yield* new DeviceError({
           message:
