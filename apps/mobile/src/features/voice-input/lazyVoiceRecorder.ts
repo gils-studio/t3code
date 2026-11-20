@@ -37,6 +37,8 @@ export function createLazyVoiceRecorder<TStatus, TRecorderState>(input: {
   readonly create: () => NativeVoiceRecorder<TStatus, TRecorderState>;
   readonly onStatus: (status: TStatus) => void;
   readonly selectInput?: (inputs: ReadonlyArray<VoiceRecordingInput>) => VoiceRecordingInput | null;
+  /** Start capturing first and route to the selected input while recording, because routing can take seconds. */
+  readonly selectInputWhileRecording?: boolean;
 }): LazyVoiceRecorder<TRecorderState> {
   let recorder: NativeVoiceRecorder<TStatus, TRecorderState> | null = null;
   let subscription: Subscription | null = null;
@@ -44,10 +46,47 @@ export function createLazyVoiceRecorder<TStatus, TRecorderState>(input: {
   let retiredUri: string | null = null;
   let pending: Promise<unknown> = Promise.resolve();
   let abandonInputSelection: (() => void) | null = null;
+  let armedSelection: {
+    readonly prepared: NativeVoiceRecorder<TStatus, TRecorderState>;
+    readonly signal: AbortSignal | undefined;
+  } | null = null;
 
   const track = <T>(promise: Promise<T>): Promise<T> => {
     pending = Promise.allSettled([pending, promise]).then(() => undefined);
     return promise;
+  };
+
+  const selectPreferredInput = async (
+    prepared: NativeVoiceRecorder<TStatus, TRecorderState>,
+    signal: AbortSignal | undefined,
+  ): Promise<void> => {
+    if (!input.selectInput) return;
+    let selected: VoiceRecordingInput | null;
+    try {
+      selected = input.selectInput(prepared.getAvailableInputs());
+    } catch {
+      return;
+    }
+    if (!selected) return;
+    const uid = selected.uid;
+    // Expo never settles a canceled coroutine function's promise, so stop waiting on abort.
+    const abandoned = Promise.withResolvers<void>();
+    const abandon = () => {
+      prepared.cancelInputSelection?.();
+      abandoned.resolve();
+    };
+    signal?.addEventListener("abort", abandon, { once: true });
+    abandonInputSelection = abandon;
+    try {
+      await Promise.race([
+        new Promise<void>((resolve) => resolve(prepared.setInput(uid))).catch(() => {}),
+        abandoned.promise,
+      ]);
+      if (signal) throwIfVoiceTranscriptionAborted(signal);
+    } finally {
+      signal?.removeEventListener("abort", abandon);
+      if (abandonInputSelection === abandon) abandonInputSelection = null;
+    }
   };
 
   return {
@@ -61,44 +100,30 @@ export function createLazyVoiceRecorder<TStatus, TRecorderState>(input: {
         subscription = recorder.addListener("recordingStatusUpdate", input.onStatus);
       }
       const prepared = recorder;
+      armedSelection = null;
       return track(
         prepared.prepareToRecordAsync().then(async () => {
           if (signal) throwIfVoiceTranscriptionAborted(signal);
-          if (!input.selectInput) return;
-          let selected: VoiceRecordingInput | null;
-          try {
-            selected = input.selectInput(prepared.getAvailableInputs());
-          } catch {
+          if (input.selectInputWhileRecording) {
+            armedSelection = { prepared, signal };
             return;
           }
-          if (!selected) return;
-          const uid = selected.uid;
-          // Expo never settles a canceled coroutine function's promise, so stop waiting on abort.
-          const abandoned = Promise.withResolvers<void>();
-          const abandon = () => {
-            prepared.cancelInputSelection?.();
-            abandoned.resolve();
-          };
-          signal?.addEventListener("abort", abandon, { once: true });
-          abandonInputSelection = abandon;
-          try {
-            await Promise.race([
-              new Promise<void>((resolve) => resolve(prepared.setInput(uid))).catch(() => {}),
-              abandoned.promise,
-            ]);
-            if (signal) throwIfVoiceTranscriptionAborted(signal);
-          } finally {
-            signal?.removeEventListener("abort", abandon);
-            if (abandonInputSelection === abandon) abandonInputSelection = null;
-          }
+          await selectPreferredInput(prepared, signal);
         }),
       );
     },
     record(options) {
       if (!recorder) throw new Error("Voice recorder is not prepared.");
       recorder.record(options);
+      const armed = armedSelection;
+      armedSelection = null;
+      if (armed?.prepared === recorder) {
+        void track(selectPreferredInput(armed.prepared, armed.signal)).catch(() => {});
+      }
     },
     stop() {
+      armedSelection = null;
+      abandonInputSelection?.();
       return recorder ? track(recorder.stop()) : Promise.resolve();
     },
     getStatus() {
@@ -107,6 +132,7 @@ export function createLazyVoiceRecorder<TStatus, TRecorderState>(input: {
     release() {
       const released = recorder;
       if (!released) return;
+      armedSelection = null;
       abandonInputSelection?.();
       recorder = null;
       subscription?.remove();

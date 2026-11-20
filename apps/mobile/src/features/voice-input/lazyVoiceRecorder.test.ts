@@ -42,6 +42,7 @@ function createNativeRecorder(uri: string) {
 function createHarness(
   selectInput?: (inputs: ReadonlyArray<VoiceRecordingInput>) => VoiceRecordingInput | null,
   configure?: (native: ReturnType<typeof createNativeRecorder>) => void,
+  selectInputWhileRecording = false,
 ) {
   const created: Array<ReturnType<typeof createNativeRecorder>> = [];
   const statuses: Status[] = [];
@@ -54,6 +55,7 @@ function createHarness(
     },
     onStatus: (status) => statuses.push(status),
     ...(selectInput ? { selectInput } : {}),
+    selectInputWhileRecording,
   });
   return { recorder, created, statuses };
 }
@@ -100,8 +102,9 @@ describe("createLazyVoiceRecorder", () => {
       granted: boolean,
       selectInput?: (inputs: ReadonlyArray<VoiceRecordingInput>) => VoiceRecordingInput | null,
       configure?: (native: ReturnType<typeof createNativeRecorder>) => void,
+      selectInputWhileRecording = false,
     ) {
-      const harness = createHarness(selectInput, configure);
+      const harness = createHarness(selectInput, configure, selectInputWhileRecording);
       const deleted: string[] = [];
       const controller = new VoiceInputController({
         recorder: harness.recorder,
@@ -155,6 +158,33 @@ describe("createLazyVoiceRecorder", () => {
 
       await controller.start();
       expect(controller.currentState.phase).toBe("recording");
+    });
+
+    it("records while a slow input route is still switching, and abandons it on stop", async () => {
+      const routing = Promise.withResolvers<void>();
+      const { controller, created } = createController(
+        true,
+        (inputs) => inputs[1] ?? null,
+        (native) => {
+          native.setInput.mockImplementationOnce(() => {
+            routing.resolve();
+            return new Promise(() => undefined);
+          });
+        },
+        true,
+      );
+
+      await controller.start();
+      await routing.promise;
+      const native = created[0]!;
+      expect(controller.currentState.phase).toBe("recording");
+      expect(native.record.mock.invocationCallOrder[0]).toBeLessThan(
+        native.setInput.mock.invocationCallOrder[0]!,
+      );
+
+      await controller.stop();
+      expect(native.cancelInputSelection).toHaveBeenCalled();
+      expect(controller.currentState.phase).toBe("idle");
     });
   });
 });
