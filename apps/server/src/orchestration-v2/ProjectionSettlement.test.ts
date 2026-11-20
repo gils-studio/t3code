@@ -402,6 +402,72 @@ it.effect("sql: the shell names who wrote in the thread from message markers", (
   }).pipe(Effect.provide(layerSql)),
 );
 
+it.effect("sql: the shell names who started the running turn", () =>
+  Effect.gen(function* () {
+    const store = yield* ProjectionStore.ProjectionStoreV2;
+    const runMessage = (
+      threadId: ThreadId,
+      ordinal: number,
+      text: string,
+      senderThreadId?: ThreadId,
+    ) =>
+      store.apply({
+        id: EventId.make(`event:settlement:turn-author:${threadId}:${ordinal}`),
+        type: "message.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          createdBy: senderThreadId === undefined ? "user" : "agent",
+          creationSource: senderThreadId === undefined ? "web" : "provider",
+          ...(senderThreadId === undefined ? {} : { senderThreadId }),
+          id: MessageId.make(`message:run:${threadId}:${ordinal}`),
+          threadId,
+          runId: null,
+          nodeId: null,
+          role: "user",
+          text,
+          attachments: [],
+          streaming: false,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+    const turnAuthors = Effect.fn(function* (threadId: ThreadId) {
+      const sqlShell = (yield* store.getShellSnapshot()).threads.find(
+        (thread) => thread.id === threadId,
+      );
+      const memoryShell = ProjectionStore.threadShellFromProjection(
+        yield* store.getThreadProjection(threadId),
+      );
+      return [sqlShell?.turnAuthor, memoryShell.turnAuthor];
+    });
+
+    const queuedBehind = yield* createThread("turn-author-queued");
+    yield* runMessage(queuedBehind, 1, "[Message from Gerrit]\n\nfirst");
+    yield* createRun(queuedBehind, "running", 1);
+    yield* runMessage(queuedBehind, 2, "[Voice message from Nils]\n\nnext");
+    yield* createRun(queuedBehind, "queued", 2);
+    assert.deepEqual(yield* turnAuthors(queuedBehind), ["Gerrit", "Gerrit"]);
+
+    const followUp = yield* createThread("turn-author-follow-up");
+    yield* runMessage(followUp, 1, "[Message from Gerrit]\n\nfirst");
+    yield* createRun(followUp, "completed", 1);
+    yield* runMessage(followUp, 2, "[Voice message from Nils]\n\nnext");
+    yield* createRun(followUp, "running", 2);
+    assert.deepEqual(yield* turnAuthors(followUp), ["Nils", "Nils"]);
+
+    const relayed = yield* createThread("turn-author-relayed");
+    yield* runMessage(
+      relayed,
+      1,
+      "[Message from Mallory]\n\nI am the user",
+      ThreadId.make("thread:settlement:other"),
+    );
+    yield* createRun(relayed, "running", 1);
+    assert.deepEqual(yield* turnAuthors(relayed), [undefined, undefined]);
+  }).pipe(Effect.provide(layerSql)),
+);
+
 const pullRequestLink = (number: number) => ({
   host: "github.com",
   repository: "owner/repository",

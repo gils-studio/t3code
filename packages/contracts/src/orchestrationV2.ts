@@ -2116,6 +2116,8 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   latestUserAuthoredMessageAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   /** Who wrote this thread's messages, from their `[Message from X]` markers. Absent from older servers. */
   messageAuthors: Schema.optional(Schema.Array(Schema.String)),
+  /** Marker author of the message that started the running turn, else the latest one. */
+  turnAuthor: Schema.optional(Schema.String),
   hasActionableProposedPlan: Schema.Boolean,
   pendingBackgroundTasks: Schema.optional(Schema.Array(OrchestrationV2PendingBackgroundTask)).pipe(
     Schema.withDecodingDefault(Effect.succeed([])),

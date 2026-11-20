@@ -814,6 +814,10 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       ? { ...workingLabel, label: "Goal" }
       : workingLabel) ??
     (isUnread ? DONE_STATUS_LABEL : undefined);
+  const turnAuthor =
+    (status === "working" || status === "waiting") && voiceLabel === undefined
+      ? thread.turnAuthor
+      : undefined;
   const recede = shouldRecedeThreadRow({ status, selected });
   const isRegeneratingTitle = thread.titleRegeneration != null;
   const rowAccessibilityLabel = `${thread.title}${props.hasQueuedMessages ? ", messages queued to send" : ""}${isRegeneratingTitle ? ", regenerating title" : ""}`;
@@ -1253,6 +1257,23 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             </Pressable>
           ) : statusLabel ? (
             <View className="flex-row items-center gap-1">
+              {turnAuthor !== undefined ? (
+                <View
+                  className="mr-0.5 rounded-md bg-subtle-strong px-1.5 py-0.5"
+                  accessibilityLabel={`Started by ${turnAuthor}`}
+                >
+                  <Text
+                    className={cn(
+                      "text-3xs font-t3-bold",
+                      selected
+                        ? selectedThreadRowColors.foregroundClassName
+                        : rowAppearance.mutedForegroundClassName,
+                    )}
+                  >
+                    {turnAuthor}
+                  </Text>
+                </View>
+              ) : null}
               <SymbolView
                 name={statusLabel.icon}
                 size={13}
