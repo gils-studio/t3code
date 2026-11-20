@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import { VoiceInputController } from "@t3tools/client-runtime/voice-input";
 
+import { resetVoiceInputGlobalsForTests } from "../../../../../packages/client-runtime/src/voice-input/controller";
+
 import { createLazyVoiceRecorder, type VoiceRecordingInput } from "./lazyVoiceRecorder";
 
 type Status = { readonly isFinished: boolean };
@@ -104,6 +106,8 @@ describe("createLazyVoiceRecorder", () => {
       configure?: (native: ReturnType<typeof createNativeRecorder>) => void,
       selectInputWhileRecording = false,
     ) {
+      // A controller left recording by an earlier case still holds the app-wide session.
+      resetVoiceInputGlobalsForTests();
       const harness = createHarness(selectInput, configure, selectInputWhileRecording);
       const deleted: string[] = [];
       const controller = new VoiceInputController({
