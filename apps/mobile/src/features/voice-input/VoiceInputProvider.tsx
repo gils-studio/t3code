@@ -112,6 +112,8 @@ const voiceInputAtom = Atom.make((get) => {
         url: status.url,
       });
     },
+    // Android waits up to 5 s for a headset's communication route; iOS switches inputs at once.
+    selectInputWhileRecording: Platform.OS === "android",
     // Read when recording starts so preference changes do not re-render every composer.
     selectInput: (inputs) => {
       const preferences = registry.get(mobilePreferencesAtom);
