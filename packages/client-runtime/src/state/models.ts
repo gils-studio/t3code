@@ -158,6 +158,8 @@ export interface EnvironmentThreadShell {
   readonly latestUserAuthoredMessageAt?: string | null;
   /** Who wrote its messages, from their markers. Absent from older servers. */
   readonly messageAuthors?: ReadonlyArray<string>;
+  /** Who sent the message that started the running or latest turn. */
+  readonly turnAuthor?: string;
   readonly hasPendingApprovals: boolean;
   readonly hasPendingUserInput: boolean;
   readonly pendingSubagentRequest?: PendingSubagentRequest | null;
@@ -309,6 +311,7 @@ export function presentThreadShell(
       ? {}
       : { latestUserAuthoredMessageAt: nullableIso(thread.latestUserAuthoredMessageAt) }),
     ...(thread.messageAuthors === undefined ? {} : { messageAuthors: thread.messageAuthors }),
+    ...(thread.turnAuthor === undefined ? {} : { turnAuthor: thread.turnAuthor }),
     hasPendingApprovals:
       thread.pendingRuntimeRequest !== null &&
       thread.pendingRuntimeRequest.kind !== "user_input" &&

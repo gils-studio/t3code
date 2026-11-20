@@ -94,7 +94,11 @@ import * as SqlClient from "effect/sql/SqlClient";
 import type * as Statement from "effect/sql/Statement";
 
 import { MCP_APP_OUTPUT_KEY } from "@t3tools/shared/mcpApp";
-import { messageAuthorsOf, messageMarkerIsTrusted } from "@t3tools/shared/messageMarker";
+import {
+  messageAuthorsOf,
+  messageMarkerIsTrusted,
+  parseMessageMarker,
+} from "@t3tools/shared/messageMarker";
 import { threadHtmlRenderAttachmentIds } from "../attachmentStore.ts";
 import {
   isThreadHistoryUserTurn,
@@ -1035,6 +1039,8 @@ type ShellThreadRow = {
   readonly latest_user_authored_message_at: string | null;
   /** JSON array of the distinct marker prefixes that open the thread's user messages. */
   readonly message_author_markers_json: string | null;
+  /** Trusted marker prefix of the message that started the activity run, else the latest run. */
+  readonly turn_author_marker: string | null;
   readonly has_actionable_proposed_plan: number;
 };
 
@@ -1586,6 +1592,15 @@ export function threadShellFromProjection(
       ) ?? pendingRuntimeRequest;
   }
   const latestUserMessage = userMessages[0] ?? null;
+  const turnRun = activityRun ?? latestRun;
+  const turnMessage =
+    turnRun === null
+      ? undefined
+      : projection.messages.find((message) => message.id === turnRun.userMessageId);
+  const turnAuthor =
+    turnMessage !== undefined && messageMarkerIsTrusted(turnMessage)
+      ? parseMessageMarker(turnMessage.text)?.author
+      : undefined;
   const pendingBackgroundTasks = derivePendingBackgroundWork({
     latestRun,
     providerThreads: projection.providerThreads,
@@ -1659,6 +1674,7 @@ export function threadShellFromProjection(
         .filter((message) => message.role === "user" && messageMarkerIsTrusted(message))
         .map((message) => message.text),
     ),
+    ...(turnAuthor === undefined ? {} : { turnAuthor }),
     hasActionableProposedPlan: projection.plans.some(
       (plan) => plan.kind === "proposed_plan" && plan.status === "active",
     ),
@@ -1771,6 +1787,7 @@ type ShellThreadState = {
   readonly latestUserMessageAt: DateTime.Utc | null;
   readonly latestUserAuthoredMessageAt: DateTime.Utc | null;
   readonly messageAuthors: ReadonlyArray<string>;
+  readonly turnAuthor: string | undefined;
   readonly hasActionableProposedPlan: boolean;
   readonly pendingBackgroundTasks: OrchestrationV2ThreadShell["pendingBackgroundTasks"];
   readonly providerInstanceHistory: OrchestrationV2ThreadShell["providerInstanceHistory"];
@@ -1935,6 +1952,7 @@ function shellFromState(input: {
     latestUserMessageAt: input.state.latestUserMessageAt,
     latestUserAuthoredMessageAt: input.state.latestUserAuthoredMessageAt,
     messageAuthors: input.state.messageAuthors,
+    ...(input.state.turnAuthor === undefined ? {} : { turnAuthor: input.state.turnAuthor }),
     hasActionableProposedPlan: input.state.hasActionableProposedPlan,
     pendingBackgroundTasks: input.state.pendingBackgroundTasks,
     providerInstanceHistory: input.state.providerInstanceHistory,
@@ -6285,6 +6303,30 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                     AND (created_by IS NOT 'agent' OR sender_thread_id IS NULL)
                 )
               ) AS message_author_markers_json,
+              (
+                SELECT substr(text, 1, instr(text, ']') + 2)
+                FROM (
+                  SELECT
+                    json_extract(message.payload_json, '$.text') AS text,
+                    json_extract(message.payload_json, '$.createdBy') AS created_by,
+                    json_extract(message.payload_json, '$.senderThreadId') AS sender_thread_id
+                  FROM orchestration_v2_projection_messages message
+                  WHERE message.message_id = COALESCE(
+                    (
+                      SELECT json_extract(r.payload_json, '$.userMessageId')
+                      FROM orchestration_v2_projection_runs r
+                      WHERE r.thread_id = t.thread_id
+                        AND r.status IN ('preparing', 'starting', 'running', 'waiting')
+                        AND NOT ${isSilentShellRun("r")}
+                      ORDER BY r.ordinal DESC, r.run_id DESC
+                      LIMIT 1
+                    ),
+                    json_extract(presented.payload_json, '$.userMessageId')
+                  )
+                )
+                WHERE (text LIKE '[Message from %' OR text LIKE '[Voice message from %')
+                  AND (created_by IS NOT 'agent' OR sender_thread_id IS NULL)
+              ) AS turn_author_marker,
               EXISTS (
                 SELECT 1
                 FROM orchestration_v2_projection_plans plan
@@ -6888,6 +6930,10 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               ? []
               : decodeIdList(row.message_author_markers_json),
           ),
+          turnAuthor:
+            row.turn_author_marker === null
+              ? undefined
+              : parseMessageMarker(row.turn_author_marker)?.author,
           hasActionableProposedPlan: row.has_actionable_proposed_plan === 1,
           pendingBackgroundTasks,
           providerInstanceHistory: providerInstanceHistoryForShell({
