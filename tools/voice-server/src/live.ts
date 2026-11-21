@@ -8,6 +8,8 @@ import type { SpeechSegment } from "./whisperServer.ts";
 const COMMIT_AFTER_SECONDS = 15;
 const SESSION_TIMEOUT_MILLIS = 5 * 60_000;
 const WAV_BYTES_PER_SECOND = 32_000;
+/** whisper-server rejects a window without samples, and makes up words for a fraction of a second. */
+const MIN_WINDOW_SECONDS = 0.5;
 
 export type LiveResult = {
   readonly accepted: boolean;
@@ -140,9 +142,9 @@ export class LiveTranscriber {
     const wav = this.wavPath(session.id);
     try {
       await this.options.decode(this.audioPath(session.id), wav, session.windowStartSeconds);
+      const seconds = (await NodeFSP.stat(wav)).size / WAV_BYTES_PER_SECOND;
+      if (seconds < MIN_WINDOW_SECONDS) return;
       if (await this.options.isSilent(wav)) {
-        const { size } = await NodeFSP.stat(wav);
-        const seconds = size / WAV_BYTES_PER_SECOND;
         if (seconds > COMMIT_AFTER_SECONDS) this.advance(session, session.windowText, "", seconds);
         return;
       }
@@ -155,7 +157,8 @@ export class LiveTranscriber {
           session,
           textOf(segments.slice(0, keepFrom)),
           textOf(segments.slice(keepFrom)),
-          keptStart,
+          // A shortened encoder can report times past the audio; the window must not start there.
+          Math.min(keptStart, seconds),
         );
       } else {
         // Whisper can return nothing for a window it heard words in a second ago.

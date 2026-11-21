@@ -101,7 +101,10 @@ export class WhisperServer {
         body: form,
         signal: AbortSignal.timeout(options.timeoutMillis),
       });
-      if (!response.ok) throw new Error(`whisper-server answered with ${response.status}`);
+      if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        throw new Error(`whisper-server answered with ${response.status} ${body.slice(0, 200)}`);
+      }
       const result = (await response.json()) as Partial<Recognition> & { error?: string };
       if (result.error) throw new Error(`whisper-server: ${result.error}`);
       const segments = result.segments ?? [];
