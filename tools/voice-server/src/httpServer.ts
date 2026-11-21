@@ -149,13 +149,7 @@ async function receiveUpload(
       await handle.close();
     }
     const { speaker, ...jobMeta } = meta;
-    return await store.create(
-      id,
-      jobMeta,
-      partial,
-      (options.now ?? Date.now)(),
-      speaker,
-    );
+    return await store.create(id, jobMeta, partial, (options.now ?? Date.now)(), speaker);
   } finally {
     output.destroy();
     await NodeFSP.rm(partial, { force: true });

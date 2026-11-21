@@ -719,6 +719,8 @@ const layerRuntimeCoreDependencies = layerRuntimeCoreDependenciesBase.pipe(
   Layer.provideMerge(layerRepositoryIdentityResolver),
   Layer.provideMerge(CodexManagedTokenBroker.layer),
   Layer.provideMerge(layerServerEnvironment),
+  // The proxy route reads it per request, so it sits with the services routes share.
+  Layer.provideMerge(VoiceProxy.layerVoiceLink),
   Layer.provideMerge(layerAuth),
   Layer.provideMerge(ServerSecretStore.layer),
   Layer.provideMerge(
@@ -787,7 +789,6 @@ const layerMakeRoutes = Layer.mergeAll(
     RemoteDelegation.RemoteDelegation.pipe(Effect.flatMap((remote) => remote.start())),
   ),
 ).pipe(
-  Layer.provide(VoiceProxy.layerVoiceLink),
   Layer.provide(
     PullRequestReviewGuideService.layer.pipe(Layer.provide(PullRequestReviewGuides.layer)),
   ),

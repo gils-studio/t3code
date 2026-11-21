@@ -103,19 +103,22 @@ export const issueVoiceAccessUrl = Effect.fn("VoiceProxy.issueAccessUrl")(functi
   };
 });
 
-const isValidToken = Effect.fn("VoiceProxy.isValidToken")(function* (token: string) {
+function decodeClaims(encodedPayload: string): typeof VoiceAccessClaims.Type | null {
+  try {
+    return Option.getOrNull(decodeVoiceAccessClaims(base64UrlDecodeUtf8(encodedPayload)));
+  } catch {
+    return null;
+  }
+}
+
+export const isValidToken = Effect.fn("VoiceProxy.isValidToken")(function* (token: string) {
   const [encodedPayload, signature, unexpectedSegment] = token.split(".");
   if (!encodedPayload || !signature || unexpectedSegment) return false;
   const secret = yield* loadSigningSecret.pipe(Effect.orElseSucceed(() => null));
   if (!secret || !timingSafeEqualBase64Url(signature, signPayload(encodedPayload, secret))) {
     return false;
   }
-  let claims: typeof VoiceAccessClaims.Type | null;
-  try {
-    claims = Option.getOrNull(decodeVoiceAccessClaims(base64UrlDecodeUtf8(encodedPayload)));
-  } catch {
-    return false;
-  }
+  const claims = decodeClaims(encodedPayload);
   return claims !== null && claims.expiresAt > (yield* Clock.currentTimeMillis);
 });
 

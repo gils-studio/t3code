@@ -1,8 +1,5 @@
 /** What a connected environment said about its voice service; "unknown" when it could not say. */
-export type VoiceAccessAnswer =
-  | { readonly url: string }
-  | { readonly url: null }
-  | "unknown";
+export type VoiceAccessAnswer = { readonly url: string } | { readonly url: null } | "unknown";
 
 type VoiceServerChoice = { readonly url: string; readonly environmentId: string };
 
