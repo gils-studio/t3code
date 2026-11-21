@@ -45,7 +45,7 @@ const decodeVoiceLinkFile = Schema.decodeUnknownOption(Schema.fromJsonString(Voi
 export class VoiceLink extends Context.Service<
   VoiceLink,
   { readonly read: Effect.Effect<VoiceLinkFile | null> }
->()("t3/voice/VoiceLink") {}
+>()("t3/voice/VoiceProxy/VoiceLink") {}
 
 /** Read per request, so the service can start, stop or move ports while T3 runs. */
 export const layerVoiceLink = Layer.effect(

@@ -41,7 +41,10 @@ const proxy = () => {
     Effect.gen(function* () {
       const body =
         request.body._tag === "Stream"
-          ? yield* Stream.mkString(Stream.decodeText(request.body.stream)).pipe(Effect.orDie)
+          ? yield* Stream.mkString(Stream.decodeText(request.body.stream)).pipe(
+              Effect.mapError((cause) => new Error("unreadable body", { cause })),
+              Effect.orDie,
+            )
           : "";
       forwarded.push({ url: request.url, headers: { ...request.headers }, body });
       return HttpClientResponse.fromWeb(
@@ -96,9 +99,9 @@ describe("voice proxy", () => {
       const issued = yield* VoiceProxy.issueVoiceAccessUrl().pipe(Effect.provide(services()));
       const token = issued.relativeUrl?.slice(`${VOICE_ROUTE_PREFIX}/`.length) ?? "";
       expect(yield* VoiceProxy.isValidToken(token).pipe(Effect.provide(services()))).toBe(true);
-      expect(yield* VoiceProxy.issueVoiceAccessUrl().pipe(Effect.provide(services(null)))).toEqual(
-        { relativeUrl: null },
-      );
+      expect(yield* VoiceProxy.issueVoiceAccessUrl().pipe(Effect.provide(services(null)))).toEqual({
+        relativeUrl: null,
+      });
       const elsewhere = services({ ...LINK, environmentId: "env-other" });
       expect(yield* VoiceProxy.issueVoiceAccessUrl().pipe(Effect.provide(elsewhere))).toEqual({
         relativeUrl: null,
