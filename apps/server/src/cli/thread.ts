@@ -678,11 +678,17 @@ const threadSendCommand = Command.make("send", {
   ...projectLocationFlags,
   thread: threadArgument,
   message: messageArgument,
+  mode: Flag.Literals("mode", ["queue", "auto", "steer"]).pipe(
+    Flag.withDescription(
+      "queue: next turn of a busy thread. auto: steer a running turn, else start or queue. steer: only steer a running turn.",
+    ),
+    Flag.withDefault("queue"),
+  ),
   wait: waitFlag,
   json: jsonFlag,
 }).pipe(
   Command.withDescription(
-    "Send a message to a thread. A busy thread gets it as its next turn; nothing is interrupted.",
+    "Send a message to a thread. By default a busy thread gets it as its next turn; nothing is interrupted.",
   ),
   Command.withHandler((flags) =>
     Effect.gen(function* () {
@@ -693,7 +699,7 @@ const threadSendCommand = Command.make("send", {
         Effect.fn("cli.thread.send")(function* (tools) {
           const sent = yield* tools.call(
             "t3_thread_send",
-            { threadId, message, mode: "queue" },
+            { threadId, message, mode: flags.mode },
             OrchestratorMcpThreadSendResult,
           );
           if (flags.wait) {
@@ -701,7 +707,13 @@ const threadSendCommand = Command.make("send", {
           }
           yield* flags.json
             ? printJson(sent)
-            : Console.log(sent.delivery === "queued" ? "Queued." : "Sent.");
+            : Console.log(
+                sent.delivery === "queued"
+                  ? "Queued."
+                  : sent.delivery === "steered"
+                    ? "Steered."
+                    : "Sent.",
+              );
         }),
       );
     }).pipe(reportThreadErrors),

@@ -641,23 +641,33 @@ export function useThreadComposerState() {
     onWillEnqueue?.();
     clearThreadComposerError(threadKey);
     const waitsForVoice = hasPendingVoice(threadKey);
-    const enqueuePromise = enqueueWithPendingVoice(threadKey, {
-      environmentId: selectedThreadShell.environmentId,
-      threadId: selectedThreadShell.id,
-      messageId,
-      commandId: CommandId.make(metadata.commandId),
-      text,
-      attachments,
-      context: draft.context,
-      modelSelection,
-      runtimeMode: draft.runtimeMode ?? thread.runtimeMode,
-      interactionMode: resolveProviderInteractionMode(
-        provider,
-        draft.interactionMode ?? thread.interactionMode,
-      ),
-      ...(followUpDispatchMode === null ? {} : { dispatchMode: followUpDispatchMode }),
-      createdAt: metadata.createdAt,
-    });
+    // The voice service sends plain text, so it can only take a message that changes nothing else.
+    const changesThreadSettings =
+      JSON.stringify(modelSelection) !== JSON.stringify(thread.modelSelection) ||
+      (draft.runtimeMode ?? thread.runtimeMode) !== thread.runtimeMode ||
+      (draft.interactionMode ?? thread.interactionMode) !== thread.interactionMode ||
+      (draft.context?.records.length ?? 0) > 0;
+    const enqueuePromise = enqueueWithPendingVoice(
+      threadKey,
+      {
+        environmentId: selectedThreadShell.environmentId,
+        threadId: selectedThreadShell.id,
+        messageId,
+        commandId: CommandId.make(metadata.commandId),
+        text,
+        attachments,
+        context: draft.context,
+        modelSelection,
+        runtimeMode: draft.runtimeMode ?? thread.runtimeMode,
+        interactionMode: resolveProviderInteractionMode(
+          provider,
+          draft.interactionMode ?? thread.interactionMode,
+        ),
+        ...(followUpDispatchMode === null ? {} : { dispatchMode: followUpDispatchMode }),
+        createdAt: metadata.createdAt,
+      },
+      { serviceMaySend: !changesThreadSettings },
+    );
     // A transcript landing right now must be read from the draft before it is cleared.
     if (waitsForVoice) await enqueuePromise.catch(() => {});
     clearComposerDraftContent(threadKey, { deferAttachmentCleanup: true });

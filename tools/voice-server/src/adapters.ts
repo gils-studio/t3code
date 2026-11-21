@@ -209,7 +209,7 @@ const THREAD_ID_PATTERN = /^[A-Za-z0-9_.:-]{1,128}$/;
 export const voiceMessagePrefix = (speaker?: string) =>
   speaker ? `[Voice message from ${speaker}]\n\n` : "[Voice message]\n\n";
 
-/** Uses T3's own CLI, so a busy thread gets the message as its next turn. */
+/** Uses T3's own CLI: a busy thread gets the message as its next turn, unless it steers. */
 export class T3CliSender implements ThreadSender {
   private readonly config: Config;
 
@@ -217,9 +217,11 @@ export class T3CliSender implements ThreadSender {
     this.config = config;
   }
 
-  async send(threadId: string, text: string, speaker?: string): Promise<void> {
+  async send(threadId: string, text: string, speaker?: string, steer = false): Promise<void> {
     this.assertThreadId(threadId);
-    await run(this.config.t3Command, ["thread", "send", threadId, "-"], {
+    // "auto" steers a running turn and starts an idle thread; queueing is the CLI's default.
+    const mode = steer ? ["--mode", "auto"] : [];
+    await run(this.config.t3Command, ["thread", "send", threadId, "-", ...mode], {
       stdin: `${voiceMessagePrefix(speaker)}${text}`,
       timeoutMillis: 120_000,
       shell: true,

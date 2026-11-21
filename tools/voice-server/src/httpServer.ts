@@ -3,7 +3,13 @@ import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeHttp from "node:http";
 
-import { isValidJobId, type Job, type JobMeta, type JobStore } from "./jobStore.ts";
+import {
+  isValidJobId,
+  type Job,
+  type JobMeta,
+  type JobStore,
+  type SendTarget,
+} from "./jobStore.ts";
 
 const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
 const MAX_META_BYTES = 256 * 1024;
@@ -67,10 +73,22 @@ export function parseMeta(line: string): (JobMeta & { readonly speaker?: string 
       threadId,
       language,
       prefixText: typeof value.prefixText === "string" ? value.prefixText : "",
+      ...(value.steer === true ? { steer: true } : {}),
       ...(typeof value.speaker === "string" && SPEAKER_PATTERN.test(value.speaker.trim())
         ? { speaker: value.speaker.trim() }
         : {}),
     };
+  } catch {
+    return null;
+  }
+}
+
+export function parseSendTarget(body: string): SendTarget | null {
+  try {
+    const value = JSON.parse(body) as Partial<Record<keyof SendTarget, unknown>>;
+    if (typeof value.threadId !== "string" || value.threadId.length === 0) return null;
+    if (typeof value.prefixText !== "string" || typeof value.steer !== "boolean") return null;
+    return { threadId: value.threadId, prefixText: value.prefixText, steer: value.steer };
   } catch {
     return null;
   }
@@ -85,6 +103,8 @@ function publicJob(store: JobStore, job: Job) {
   return {
     id: job.id,
     status: job.status,
+    mode: job.mode,
+    steer: job.steer === true,
     transcript: job.transcript,
     queuePosition: store.queuePosition(job.id),
     lastError: job.lastError,
@@ -212,7 +232,7 @@ export function createHttpServer(options: HttpOptions): NodeHttp.Server {
     if (request.method === "PUT" && liveId && isValidJobId(liveId)) {
       return receiveLiveAudio(request, response, liveId, searchParams, options);
     }
-    const match = /^\/v1\/jobs\/([^/]+)(\/ack|\/retry|\/claim)?$/.exec(pathname);
+    const match = /^\/v1\/jobs\/([^/]+)(\/ack|\/retry|\/claim|\/send)?$/.exec(pathname);
     const id = match?.[1];
     if (!id || !isValidJobId(id)) {
       request.resume();
@@ -255,6 +275,15 @@ export function createHttpServer(options: HttpOptions): NodeHttp.Server {
     if (request.method === "POST" && action === "/claim") {
       const claimed = await store.claim(id, now);
       sendJson(response, claimed ? 200 : 409, publicJob(store, store.get(id) ?? job));
+      return;
+    }
+    if (request.method === "POST" && action === "/send") {
+      const body = await readBody(request, MAX_META_BYTES);
+      const target = body && parseSendTarget(body.toString("utf8"));
+      if (!target) return sendJson(response, 400, { error: "invalid-target" });
+      const handed = await store.handOver(id, target, now);
+      if (handed) options.onJobCreated();
+      sendJson(response, handed ? 200 : 409, publicJob(store, handed ?? store.get(id) ?? job));
       return;
     }
     if (request.method === "POST" && action === "/retry" && job.status === "failed") {

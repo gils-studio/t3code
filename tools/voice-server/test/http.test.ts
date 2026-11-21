@@ -152,6 +152,25 @@ NodeTest.test("lets the phone take over sending until the service started on it"
   NodeAssert.equal(store.get("job-00002")?.mode, "send");
 });
 
+NodeTest.test("takes over sending a job until it is sent", async () => {
+  const send = (id: string, target: object) =>
+    fetch(`${base}/v1/jobs/${id}/send`, {
+      method: "POST",
+      headers: auth,
+      body: JSON.stringify(target),
+    });
+  const target = { threadId: "thread-9", prefixText: "", steer: true };
+  NodeAssert.equal((await send("job-unknown", target)).status, 404);
+  NodeAssert.equal((await send("job-00002", { threadId: "thread-9" })).status, 400);
+  await store.update("job-00002", { mode: "draft", status: "queued" }, 1);
+  const handed = await send("job-00002", target);
+  NodeAssert.equal(handed.status, 200);
+  NodeAssert.deepEqual(((await handed.json()) as { mode: string; steer: boolean }).steer, true);
+  NodeAssert.equal(store.get("job-00002")?.threadId, "thread-9");
+  await store.update("job-00002", { status: "sending" }, 1);
+  NodeAssert.equal((await send("job-00002", { ...target, steer: false })).status, 409);
+});
+
 NodeTest.test("streams live audio and tells a phone that lost track where to resume", async () => {
   const live = (id: string, offset: number, audio: string, headers: object = auth) =>
     fetch(`${base}/v1/live/${id}?offset=${offset}&language=de`, {
