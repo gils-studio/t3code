@@ -1,5 +1,4 @@
 import * as NodeAssert from "node:assert/strict";
-import * as NodeCrypto from "node:crypto";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeNet from "node:net";
 import * as NodeOS from "node:os";
@@ -9,9 +8,7 @@ import * as NodeTest from "node:test";
 import { createHttpServer } from "../src/httpServer.ts";
 import { JobStore } from "../src/jobStore.ts";
 
-const token = "device-token";
-const namedToken = "named-device-token";
-const sha256 = (value: string) => NodeCrypto.createHash("sha256").update(value).digest("hex");
+const token = "link-token";
 const root = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "voice-http-"));
 const store = new JobStore(root);
 await store.load();
@@ -21,8 +18,7 @@ const liveChunks = new Map<string, string>();
 const endedLive: string[] = [];
 const server = createHttpServer({
   store,
-  tokenHashes: () => [sha256(token), sha256(namedToken)],
-  speakers: () => ({ [sha256(namedToken)]: "Nils" }),
+  token,
   environmentId: "env-1",
   onJobCreated: () => (created += 1),
   warm: () => (warmed += 1),
@@ -47,30 +43,22 @@ const auth = { authorization: `Bearer ${token}` };
 const body = (audio: string, meta: object = { mode: "send", threadId: "t", language: "de" }) =>
   `${JSON.stringify(meta)}\n${audio}`;
 
-NodeTest.test(
-  "names the speaker the phone set, else the one its token was paired with",
-  async () => {
-    const upload = (id: string, secret: string, meta: object) =>
-      fetch(`${base}/v1/jobs/${id}`, {
-        method: "PUT",
-        headers: { authorization: `Bearer ${secret}` },
-        body: body("audio", meta),
-      });
-    const meta = { mode: "send", threadId: "t", language: "de" };
-    const cases = [
-      ["speaker-phone", namedToken, { ...meta, speaker: " Gerrit " }, "Gerrit"],
-      ["speaker-token", namedToken, meta, "Nils"],
-      ["speaker-bad-name", namedToken, { ...meta, speaker: "Ger]rit" }, "Nils"],
-      ["speaker-unnamed", token, meta, undefined],
-    ] as const;
-    for (const [id, secret, sent, expected] of cases) {
-      const response = await upload(id, secret, sent);
-      NodeAssert.equal(((await response.json()) as { speaker: unknown }).speaker, expected ?? null);
-      NodeAssert.equal(store.get(id)?.speaker, expected);
-    }
-    await Promise.all(cases.map(([id]) => store.remove(id)));
-  },
-);
+NodeTest.test("names the speaker the phone set", async () => {
+  const upload = (id: string, meta: object) =>
+    fetch(`${base}/v1/jobs/${id}`, { method: "PUT", headers: auth, body: body("audio", meta) });
+  const meta = { mode: "send", threadId: "t", language: "de" };
+  const cases = [
+    ["speaker-phone", { ...meta, speaker: " Gerrit " }, "Gerrit"],
+    ["speaker-bad-name", { ...meta, speaker: "Ger]rit" }, undefined],
+    ["speaker-unnamed", meta, undefined],
+  ] as const;
+  for (const [id, sent, expected] of cases) {
+    const response = await upload(id, sent);
+    NodeAssert.equal(((await response.json()) as { speaker: unknown }).speaker, expected ?? null);
+    NodeAssert.equal(store.get(id)?.speaker, expected);
+  }
+  await Promise.all(cases.map(([id]) => store.remove(id)));
+});
 
 NodeTest.test("rejects requests without a valid token", async () => {
   NodeAssert.equal((await fetch(`${base}/v1/info`)).status, 401);

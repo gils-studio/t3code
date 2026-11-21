@@ -78,11 +78,11 @@ class T3VoiceTranscriptionModule : Module() {
         id: String,
         audioUri: String,
         metaUri: String,
-        url: String,
-        token: String
+        endpointUri: String,
+        path: String
       ->
       val context = requireNotNull(appContext.reactContext)
-      VoiceUploadWorker.enqueue(context, id, audioUri, metaUri, url, token)
+      VoiceUploadWorker.enqueue(context, id, audioUri, metaUri, endpointUri, path)
     }
 
     Function("showDelivery") { title: String, text: String ->

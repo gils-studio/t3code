@@ -29,8 +29,8 @@ export type LiveStream = {
 
 export type HttpOptions = {
   readonly store: JobStore;
-  readonly tokenHashes: () => ReadonlyArray<string>;
-  readonly speakers: () => Readonly<Record<string, string>>;
+  /** Only the T3 server on this machine holds it; phones come through its `/api/voice` proxy. */
+  readonly token: string;
   readonly environmentId: string;
   readonly onJobCreated: () => void;
   /** Loads the model ahead of the work; failures only cost that head start. */
@@ -39,26 +39,16 @@ export type HttpOptions = {
   readonly now?: () => number;
 };
 
-const hashOfBearer = (header: string) =>
-  NodeCrypto.createHash("sha256").update(header.slice("Bearer ".length)).digest();
+const sha256 = (value: string) => NodeCrypto.createHash("sha256").update(value).digest();
 
-export function isAuthorized(header: string | undefined, hashes: ReadonlyArray<string>): boolean {
+export function isAuthorized(header: string | undefined, token: string): boolean {
   if (!header?.startsWith("Bearer ")) return false;
-  const candidate = hashOfBearer(header);
-  return hashes.some((hash) => {
-    const expected = Buffer.from(hash, "hex");
-    return expected.length === candidate.length && NodeCrypto.timingSafeEqual(expected, candidate);
-  });
+  return NodeCrypto.timingSafeEqual(sha256(header.slice("Bearer ".length)), sha256(token));
 }
 
-/** For a request that passed isAuthorized. */
-const speakerOf = (header: string, speakers: Readonly<Record<string, string>>) =>
-  speakers[hashOfBearer(header).toString("hex")];
-
-// Same rule as `pair`: one line that fits in the marker.
+// One line that fits in the voice marker.
 const SPEAKER_PATTERN = /^[^\]\r\n]{1,40}$/;
 
-/** The phone's own name for its user wins over the name its token was paired with. */
 export function parseMeta(line: string): (JobMeta & { readonly speaker?: string }) | null {
   try {
     const value = JSON.parse(line) as Partial<JobMeta> & { readonly speaker?: unknown };
@@ -159,13 +149,7 @@ async function receiveUpload(
       await handle.close();
     }
     const { speaker, ...jobMeta } = meta;
-    return await store.create(
-      id,
-      jobMeta,
-      partial,
-      (options.now ?? Date.now)(),
-      speaker ?? speakerOf(request.headers.authorization ?? "", options.speakers()),
-    );
+    return await store.create(id, jobMeta, partial, (options.now ?? Date.now)(), speaker);
   } finally {
     output.destroy();
     await NodeFSP.rm(partial, { force: true });
@@ -218,7 +202,7 @@ export function createHttpServer(options: HttpOptions): NodeHttp.Server {
     request: NodeHttp.IncomingMessage,
     response: NodeHttp.ServerResponse,
   ): Promise<void> => {
-    if (!isAuthorized(request.headers.authorization, options.tokenHashes())) {
+    if (!isAuthorized(request.headers.authorization, options.token)) {
       request.resume();
       sendJson(response, 401, { error: "unauthorized" });
       return;

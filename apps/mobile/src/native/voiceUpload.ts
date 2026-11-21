@@ -2,8 +2,9 @@ export type VoiceUpload = {
   readonly id: string;
   readonly audioUri: string;
   readonly metaUri: string;
-  readonly url: string;
-  readonly token: string;
+  /** A file holding the current base URL, read per attempt: the app renews it on reconnect. */
+  readonly endpointUri: string;
+  readonly path: string;
 };
 
 export const voiceUploadSupported = false;

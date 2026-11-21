@@ -23,8 +23,8 @@ import kotlinx.coroutines.withContext
 
 private const val KEY_AUDIO = "audio"
 private const val KEY_META = "meta"
-private const val KEY_URL = "url"
-private const val KEY_TOKEN = "token"
+private const val KEY_ENDPOINT = "endpoint"
+private const val KEY_PATH = "path"
 private const val CONNECT_TIMEOUT_MS = 30_000
 private const val READ_TIMEOUT_MS = 120_000
 private const val NEWLINE = 10
@@ -39,8 +39,14 @@ class VoiceUploadWorker(context: Context, parameters: WorkerParameters) :
       val meta = File(requireNotNull(inputData.getString(KEY_META)))
       // The outbox removes both files once the job is finished, which also ends stale work.
       if (!audio.exists() || !meta.exists()) return@withContext Result.success()
+      // Work from an app before the T3 proxy; the outbox schedules the upload again.
+      val endpoint = inputData.getString(KEY_ENDPOINT) ?: return@withContext Result.failure()
       try {
-        if (upload(audio, meta)) Result.success() else Result.retry()
+        if (upload(audio, meta, File(requireNotNull(Uri.parse(endpoint).path)))) {
+          Result.success()
+        } else {
+          Result.retry()
+        }
       } catch (_: IOException) {
         Result.retry()
       }
@@ -53,16 +59,22 @@ class VoiceUploadWorker(context: Context, parameters: WorkerParameters) :
       voiceDeliveryNotification(applicationContext, "Sending voice message", "Uploading the recording")
     )
 
-  /** A rejected upload retries too: the audio must stay deliverable until it is on the server. */
-  private fun upload(audio: File, meta: File): Boolean {
+  /**
+   * A rejected upload retries too: the audio must stay deliverable until it is on the server.
+   * The base URL is read per attempt, since the app renews it whenever it reconnects to T3.
+   */
+  private fun upload(audio: File, meta: File, endpoint: File): Boolean {
+    if (!endpoint.exists()) return false
+    val base = endpoint.readText().trim()
+    if (base.isEmpty()) return false
     val metaBytes = meta.readBytes()
-    val connection = URL(requireNotNull(inputData.getString(KEY_URL))).openConnection() as HttpURLConnection
+    val connection =
+      URL(base + requireNotNull(inputData.getString(KEY_PATH))).openConnection() as HttpURLConnection
     try {
       connection.requestMethod = "PUT"
       connection.doOutput = true
       connection.connectTimeout = CONNECT_TIMEOUT_MS
       connection.readTimeout = READ_TIMEOUT_MS
-      connection.setRequestProperty("Authorization", "Bearer ${inputData.getString(KEY_TOKEN)}")
       connection.setRequestProperty("Content-Type", "application/octet-stream")
       connection.setFixedLengthStreamingMode(metaBytes.size + 1L + audio.length())
       connection.outputStream.use { output ->
@@ -82,8 +94,8 @@ class VoiceUploadWorker(context: Context, parameters: WorkerParameters) :
       id: String,
       audioUri: String,
       metaUri: String,
-      url: String,
-      token: String
+      endpointUri: String,
+      path: String
     ) {
       val request =
         OneTimeWorkRequestBuilder<VoiceUploadWorker>()
@@ -97,8 +109,8 @@ class VoiceUploadWorker(context: Context, parameters: WorkerParameters) :
             workDataOf(
               KEY_AUDIO to requireNotNull(Uri.parse(audioUri).path),
               KEY_META to requireNotNull(Uri.parse(metaUri).path),
-              KEY_URL to url,
-              KEY_TOKEN to token
+              KEY_ENDPOINT to endpointUri,
+              KEY_PATH to path
             )
           )
           .build()
