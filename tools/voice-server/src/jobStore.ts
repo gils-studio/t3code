@@ -17,7 +17,12 @@ export type JobMeta = {
   readonly language: string;
   /** Draft text typed before the recording; sent ahead of the transcript. */
   readonly prefixText: string;
+  /** Goes to the running agent at once instead of queueing behind it. */
+  readonly steer?: boolean;
 };
+
+/** Where a job handed over by the phone goes. */
+export type SendTarget = Required<Pick<JobMeta, "threadId" | "prefixText" | "steer">>;
 
 export type Job = JobMeta & {
   readonly id: string;
@@ -151,6 +156,31 @@ export class JobStore {
       now,
     );
     return job.mode === "draft";
+  }
+
+  /**
+   * The phone hands a dictation or a changed steer choice to this service, so it no longer has
+   * to stay awake to deliver it. Null once sending started: the target can no longer change.
+   */
+  async handOver(id: string, target: SendTarget, now: number): Promise<Job | null> {
+    let accepted = false;
+    const job = await this.update(
+      id,
+      (current) => {
+        if (
+          current.status === "sending" ||
+          (current.status === "done" && current.mode === "send")
+        ) {
+          return {};
+        }
+        accepted = true;
+        // A dictation already transcribed for the draft is sent right away.
+        const due = current.status === "done" && Boolean(current.transcript);
+        return { ...target, mode: "send", ...(due ? { status: "sending" as const } : {}) };
+      },
+      now,
+    );
+    return accepted ? job : null;
   }
 
   async remove(id: string): Promise<void> {

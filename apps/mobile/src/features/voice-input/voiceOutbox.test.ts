@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
+  needsPhone,
   VoiceOutbox,
   type VoiceHandoffTarget,
   type VoiceJob,
@@ -14,7 +15,7 @@ function harness(
   options: {
     readonly saved?: ReadonlyArray<VoiceOutboxItem>;
     readonly speaker?: string;
-    readonly steerHandover?: VoiceHandoffTarget["steerHandover"];
+    readonly steersActiveTurn?: VoiceHandoffTarget["steersActiveTurn"];
   } = {},
 ) {
   const stored = new Map((options.saved ?? []).map((item) => [item.id, item]));
@@ -31,7 +32,7 @@ function harness(
     fetchJob: vi.fn<VoiceServerClient["fetchJob"]>(async (id) => jobs.get(id) ?? null),
     acknowledge: vi.fn<VoiceServerClient["acknowledge"]>(async () => {}),
     retry: vi.fn<VoiceServerClient["retry"]>(async () => {}),
-    claim: vi.fn<VoiceServerClient["claim"]>(async () => "claimed"),
+    handOver: vi.fn<VoiceServerClient["handOver"]>(async () => "handed"),
   };
   const drafts = new Map<string, string>();
   const appendDraft = vi.fn(async (ownerKey: string, text: string) => {
@@ -68,18 +69,28 @@ function harness(
     clearDraftText: () => {
       draftText = "";
     },
-    ...(options.steerHandover ? { steerHandover: options.steerHandover } : {}),
+    ...(options.steersActiveTurn ? { steersActiveTurn: options.steersActiveTurn } : {}),
   });
   const finish = async (disposition: "draft" | "send") => {
     handoff.recordingStarted("file:///cache/a.aac");
     handoff.recordingFinished("file:///cache/a.aac", disposition);
     await outbox.poll();
   };
-  const done = (transcript: string): VoiceJob => ({
+  const done = (transcript: string, job: Partial<VoiceJob> = {}): VoiceJob => ({
     status: "done",
     transcript,
     queuePosition: null,
     lastError: null,
+    ...job,
+  });
+  const queued = (job: Partial<VoiceJob> = {}): VoiceJob => ({
+    status: "queued",
+    transcript: null,
+    queuePosition: 0,
+    lastError: null,
+    mode: "send",
+    steer: false,
+    ...job,
   });
   return {
     outbox,
@@ -94,6 +105,7 @@ function harness(
     handoff,
     finish,
     done,
+    queued,
     missingAudio,
     readDraftText: () => draftText,
   };
@@ -349,106 +361,71 @@ describe("VoiceOutbox", () => {
     });
   });
 
-  describe("steering a recording the service would send", () => {
-    const held = {
-      environmentId: "env",
-      threadId: "thread",
-      messageId: "message-1",
-      draftKey: "owner",
-      sendsAlone: false,
-    };
-    const start = async (claim?: Awaited<ReturnType<VoiceServerClient["claim"]>>) => {
+  describe("steering a recording the service sends", () => {
+    const uploaded = async () => {
       const h = harness();
-      if (claim) h.client.claim.mockResolvedValue(claim);
       await h.finish("send");
-      const enqueueMessage = vi.fn(async () => {});
-      const steer = (steers: boolean) =>
-        h.outbox.setSteering("voice-1", steers, () => ({ held, enqueueMessage }));
-      return { ...h, enqueueMessage, steer, saved: () => h.stored.get("voice-1") };
+      h.jobs.set("voice-1", h.queued());
+      await h.outbox.poll();
+      return { ...h, saved: () => h.stored.get("voice-1") };
     };
 
-    it("takes the job from the service and delivers the transcript itself", async () => {
-      const h = await start();
-      await h.steer(true);
-      expect(h.enqueueMessage).toHaveBeenCalledOnce();
-      expect(h.saved()).toMatchObject({ mode: "draft", heldMessage: { steers: true } });
-      h.jobs.set("voice-1", h.done("Wort"));
-      await h.outbox.poll();
-      expect(h.heldMessages.release).toHaveBeenCalledWith(
-        expect.objectContaining({ messageId: "message-1" }),
-        "[Voice message]\n\ntyped\n\nWort",
-      );
-    });
-
-    it("drops its message when the service had already started sending", async () => {
-      const h = await start("too-late");
-      await h.steer(true);
-      expect(h.heldMessages.remove).toHaveBeenCalledOnce();
-      expect(h.saved()).toMatchObject({ mode: "send" });
-      expect(h.saved()?.heldMessage).toBeUndefined();
-    });
-
-    it("claims on the next poll when the service could not be asked yet", async () => {
-      const h = await start("missing");
-      await h.steer(true);
-      expect(h.saved()).toMatchObject({ mode: "send" });
-      h.client.claim.mockResolvedValue("claimed");
-      await h.outbox.poll();
-      expect(h.saved()).toMatchObject({ mode: "draft" });
-    });
-
-    it("undo keeps the message on the phone and only stops it from steering", async () => {
-      const h = await start();
-      await h.steer(true);
-      await h.steer(false);
-      expect(h.heldMessages.setSteering).toHaveBeenCalledWith(
-        expect.objectContaining({ messageId: "message-1" }),
-        false,
-      );
-      expect(h.heldMessages.remove).not.toHaveBeenCalled();
-      expect(h.saved()).toMatchObject({ mode: "draft", heldMessage: { steers: false } });
-      expect(h.client.claim).toHaveBeenCalledOnce();
-    });
-
-    it("steers from the moment it is sent while the agent runs, before the service hears of it", async () => {
-      const enqueueMessage = vi.fn(async () => {});
-      const h = harness({ steerHandover: () => ({ held, enqueueMessage }) });
+    it("leaves a recording sent while the agent runs to the service, steering", async () => {
+      const h = harness({ steersActiveTurn: () => true });
       await h.finish("send");
-      expect(enqueueMessage).toHaveBeenCalledOnce();
-      expect(h.stored.get("voice-1")).toMatchObject({
-        mode: "draft",
-        prefixText: "typed",
-        heldMessage: { messageId: "message-1", steers: true },
-      });
+      expect(h.stored.get("voice-1")).toMatchObject({ mode: "send", steers: true });
       expect(h.client.enqueueUpload).toHaveBeenCalledWith(
-        expect.objectContaining({ mode: "draft" }),
+        expect.objectContaining({ mode: "send", steers: true }),
       );
-      expect(h.client.claim).not.toHaveBeenCalled();
-      h.jobs.set("voice-1", h.done("Wort"));
+      h.jobs.set("voice-1", h.done("Wort", { mode: "send", steer: true }));
       await h.outbox.poll();
-      expect(h.heldMessages.release).toHaveBeenCalledWith(
-        expect.objectContaining({ messageId: "message-1" }),
-        "[Voice message]\n\ntyped\n\nWort",
-      );
+      expect(h.heldMessages.release).not.toHaveBeenCalled();
+      expect(h.client.handOver).not.toHaveBeenCalled();
+      expect(h.stored.size).toBe(0);
     });
 
-    it("lets the service send it when the steering message could not be stored", async () => {
-      const enqueueMessage = vi.fn(async () => {
-        throw new Error("disk full");
+    it("tells the service when the user switches it", async () => {
+      const h = await uploaded();
+      await h.outbox.setSteering("voice-1", true);
+      expect(h.client.handOver).toHaveBeenCalledWith("voice-1", {
+        threadId: "thread",
+        prefixText: "typed",
+        steer: true,
       });
-      const h = harness({ steerHandover: () => ({ held, enqueueMessage }) });
-      await h.finish("send");
-      expect(h.stored.get("voice-1")).toMatchObject({ mode: "send", prefixText: "typed" });
-      expect(h.stored.get("voice-1")?.heldMessage).toBeUndefined();
-      expect(h.readDraftText()).toBe("");
+      expect(h.saved()).toMatchObject({ mode: "send", steers: true });
+      expect(h.saved()?.heldMessage).toBeUndefined();
     });
 
-    it("leaves the service in charge when the message could not be stored", async () => {
-      const h = await start();
-      h.enqueueMessage.mockRejectedValue(new Error("disk full"));
-      await expect(h.steer(true)).rejects.toThrow("disk full");
-      expect(h.client.claim).not.toHaveBeenCalled();
-      expect(h.saved()?.heldMessage).toBeUndefined();
+    it("tells the service again on the next poll when it could not be reached", async () => {
+      const h = await uploaded();
+      h.client.handOver.mockRejectedValueOnce(new Error("offline"));
+      await h.outbox.setSteering("voice-1", true);
+      await h.outbox.poll();
+      expect(h.client.handOver).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps the service's choice once it started sending", async () => {
+      const h = await uploaded();
+      h.client.handOver.mockResolvedValueOnce("too-late");
+      await h.outbox.setSteering("voice-1", true);
+      expect(h.saved()).toMatchObject({ steers: false });
+    });
+
+    it("drops a steering message an older app held, so only the service sends it", async () => {
+      const held = {
+        environmentId: "env",
+        threadId: "thread",
+        messageId: "message-1",
+        draftKey: "owner",
+        sendsAlone: false,
+        steers: true,
+      };
+      const h = harness({ saved: [item({ mode: "send", heldMessage: held })] });
+      await h.outbox.recover();
+      await h.outbox.poll();
+      expect(h.heldMessages.remove).toHaveBeenCalledWith(held);
+      expect(h.stored.get("voice-1")).toMatchObject({ mode: "send", steers: true });
+      expect(h.stored.get("voice-1")?.heldMessage).toBeUndefined();
     });
   });
 
@@ -473,6 +450,44 @@ describe("VoiceOutbox", () => {
         held,
         "[Voice message]\n\ntyped\n\nhallo",
       );
+      expect(h.appendDraft).not.toHaveBeenCalled();
+    });
+
+    it("hands the dictation to the service, which sends it", async () => {
+      const h = harness();
+      await h.finish("draft");
+      h.jobs.set("voice-1", h.queued({ status: "transcribing", mode: "draft" }));
+      await h.outbox.poll();
+      const target = {
+        ownerKey: "thread-key",
+        threadId: "thread-2",
+        prefixText: "typed",
+        steers: true,
+      };
+      await expect(h.outbox.sendThroughService("voice-1", target)).resolves.toBe(true);
+      expect(h.client.handOver).toHaveBeenCalledWith("voice-1", {
+        threadId: "thread-2",
+        prefixText: "typed",
+        steer: true,
+      });
+      expect(h.outbox.pendingDraftItemId("owner")).toBe(null);
+      expect(needsPhone(h.stored.get("voice-1")!)).toBe(false);
+      h.jobs.set("voice-1", h.done("hallo", { mode: "send", steer: true }));
+      await h.outbox.poll();
+      expect(h.appendDraft).not.toHaveBeenCalled();
+      expect(h.heldMessages.release).not.toHaveBeenCalled();
+      expect(h.stored.size).toBe(0);
+    });
+
+    it("hands it over on the next poll when the upload carried the old target", async () => {
+      const h = harness();
+      await h.finish("draft");
+      const target = { ownerKey: "owner", threadId: "thread", prefixText: "", steers: false };
+      await h.outbox.sendThroughService("voice-1", target);
+      expect(h.client.handOver).not.toHaveBeenCalled();
+      h.jobs.set("voice-1", h.done("hallo", { mode: "draft" }));
+      await h.outbox.poll();
+      expect(h.client.handOver).toHaveBeenCalledOnce();
       expect(h.appendDraft).not.toHaveBeenCalled();
     });
 

@@ -5,7 +5,7 @@ export interface Transcriber {
 }
 
 export interface ThreadSender {
-  send(threadId: string, text: string, speaker?: string): Promise<void>;
+  send(threadId: string, text: string, speaker?: string, steer?: boolean): Promise<void>;
   /** Used after a crash during send: at-least-once, without a visible duplicate. */
   hasMessage(threadId: string, text: string): Promise<boolean>;
 }
@@ -183,7 +183,7 @@ export class Worker {
         return;
       }
       await store.update(job.id, { sendStarted: true }, this.now());
-      await sender.send(job.threadId, message, job.speaker);
+      await sender.send(job.threadId, message, job.speaker, job.steer === true);
       await store.update(job.id, { status: "done", lastError: null }, this.now());
     } catch (error) {
       const attempts = job.attempts + 1;

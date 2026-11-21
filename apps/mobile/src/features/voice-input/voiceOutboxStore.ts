@@ -47,6 +47,7 @@ export const voiceOutboxFileStore: VoiceOutboxStore = {
         threadId: item.threadId ?? "",
         language: item.language,
         prefixText: item.prefixText,
+        ...(item.steers ? { steer: true } : {}),
         ...(item.speaker ? { speaker: item.speaker } : {}),
       }),
     );

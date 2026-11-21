@@ -100,15 +100,16 @@ export function createVoiceServerClient(
       }
       return (await response.json()) as { readonly received: number; readonly text: string };
     },
-    claim: async (id) => {
-      const response = await fetch(`${config.url}/v1/jobs/${id}/claim`, {
+    handOver: async (id, target) => {
+      const response = await fetch(`${config.url}/v1/jobs/${id}/send`, {
         method: "POST",
-        headers: authorization(config.token),
+        headers: { ...authorization(config.token), "content-type": "application/json" },
+        body: JSON.stringify(target),
       });
       if (response.status === 404) return "missing";
       if (response.status === 409) return "too-late";
-      if (!response.ok) throw new Error(`Voice server claim failed: ${response.status}`);
-      return "claimed";
+      if (!response.ok) throw new Error(`Voice server hand-over failed: ${response.status}`);
+      return "handed";
     },
     acknowledge: (id) => post(id, "ack"),
     retry: (id) => post(id, "retry"),

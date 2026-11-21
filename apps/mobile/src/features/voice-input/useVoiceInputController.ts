@@ -9,7 +9,7 @@ import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { ComposerEditorSelection } from "../../components/ComposerEditor";
 import { useGlobalVoiceInput } from "./VoiceInputProvider";
 import { createVoiceInputTarget } from "./voiceInputSession";
-import { voiceOutbox, voiceSteerHandover } from "./voiceOutboxRuntime";
+import { voiceOutbox } from "./voiceOutboxRuntime";
 
 const IDLE_STATE: VoiceInputState = { phase: "idle", error: null, errorAction: null };
 
@@ -78,15 +78,10 @@ export function useVoiceInputController(input: {
             sendsThroughDraft: serverTarget.sendsThroughDraft,
             readDraftText: () => captured.readDraftMessage() ?? "",
             clearDraftText: serverTarget.clearDraftText,
-            steerHandover: (item) => {
-              // The agent may have started or finished while the user was speaking.
+            steersActiveTurn: () => {
               const latest = latestInput.current;
               const current = latest.ownerKey === ownerKey ? latest.serverTarget : serverTarget;
-              if (threadId === null || !current?.steersActiveTurn()) return null;
-              return voiceSteerHandover(item, true, {
-                environmentId: serverTarget.environmentId,
-                threadId,
-              });
+              return current?.steersActiveTurn() ?? false;
             },
           })
         : null;

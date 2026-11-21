@@ -3,9 +3,6 @@ import * as Linking from "expo-linking";
 import { useEffect, useEffectEvent, useSyncExternalStore } from "react";
 import { Alert, AppState } from "react-native";
 
-import { CommandId, MessageId, type EnvironmentId, type ThreadId } from "@t3tools/contracts";
-
-import { makeQueuedMessageMetadata } from "../../lib/commandMetadata";
 import { uuidv4 } from "../../lib/uuid";
 import { showVoiceDelivery, voiceUploadSupported } from "../../native/voiceUpload";
 import {
@@ -29,14 +26,12 @@ import {
   type VoiceHeldMessage,
   type VoiceOutboxItem,
   type VoiceServerClient,
-  type VoiceSteerHandover,
 } from "./voiceOutbox";
 import { voiceOutboxFileStore } from "./voiceOutboxStore";
 import {
   threadVoiceStatus,
   VOICE_MESSAGE_LABEL,
   voiceDeliveryNotice,
-  voiceItemText,
   voicePreviewText,
 } from "./voiceThreadMessages";
 import {
@@ -220,54 +215,38 @@ export function holdVoiceThreadMessage(
   );
 }
 
-/** The message a sent recording becomes once the phone, not the service, delivers it. */
-export function voiceSteerHandover(
-  item: VoiceOutboxItem,
-  steers: boolean,
-  target: { readonly environmentId: EnvironmentId; readonly threadId: ThreadId },
-): VoiceSteerHandover {
-  const metadata = makeQueuedMessageMetadata();
-  const message: QueuedThreadMessage = {
-    ...target,
-    messageId: MessageId.make(metadata.messageId),
-    commandId: CommandId.make(metadata.commandId),
-    text: voiceItemText(item),
-    attachments: [],
-    dispatchMode: steerDispatchMode(steers),
-    awaitingVoiceId: item.id,
-    createdAt: new Date(item.createdAt).toISOString(),
-  };
-  return {
-    held: {
-      environmentId: String(target.environmentId),
-      threadId: String(target.threadId),
-      messageId: String(message.messageId),
-      draftKey: item.ownerKey,
-      sendsAlone: item.prefixText.length > 0,
-    },
-    enqueueMessage: () => enqueueThreadOutboxMessage(message),
-  };
-}
-
 /** Switches a sent recording between steering the agent and queueing behind it. */
-export function setVoiceSteering(
-  item: VoiceOutboxItem,
-  steers: boolean,
-  target: { readonly environmentId: EnvironmentId; readonly threadId: ThreadId },
-): Promise<void> {
-  return voiceOutbox.setSteering(item.id, steers, () => voiceSteerHandover(item, steers, target));
-}
+export const setVoiceSteering = (item: VoiceOutboxItem, steers: boolean): Promise<void> =>
+  voiceOutbox.setSteering(item.id, steers);
 
 export const hasPendingVoice = (draftKey: string) =>
   voiceOutbox.pendingDraftItemId(draftKey) !== null;
 
-/** A message sent while its dictation is still transcribing waits for those words. */
+/**
+ * A message sent while its dictation is still transcribing waits for those words. The service
+ * sends it when it can carry all of it, so the phone is free once the audio is uploaded; a
+ * message that also changes the thread's settings (`serviceMaySend` false) leaves from the phone.
+ */
 export async function enqueueWithPendingVoice(
   draftKey: string,
   message: QueuedThreadMessage,
+  options: { readonly serviceMaySend?: boolean } = {},
 ): Promise<void> {
   const voiceId = voiceOutbox.pendingDraftItemId(draftKey);
   if (voiceId === null) return enqueueThreadOutboxMessage(message);
+  if (
+    options.serviceMaySend &&
+    message.attachments.length === 0 &&
+    server?.environmentId === String(message.environmentId) &&
+    (await voiceOutbox.sendThroughService(voiceId, {
+      ownerKey: scopedThreadKey(message.environmentId, message.threadId),
+      threadId: String(message.threadId),
+      prefixText: message.text,
+      steers: message.dispatchMode === "auto",
+    }))
+  ) {
+    return;
+  }
   const preview = voiceOutbox.getSnapshot().find((item) => item.id === voiceId)?.previewText;
   const words = voicePreviewText(preview) || VOICE_MESSAGE_LABEL;
   const text = [message.text, words].filter(Boolean).join("\n\n");

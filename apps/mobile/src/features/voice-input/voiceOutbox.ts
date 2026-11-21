@@ -16,6 +16,9 @@ export type VoiceJob = {
   readonly lastError: string | null;
   /** Who this phone belongs to; the service knows it from the token. */
   readonly speaker?: string | null;
+  /** Missing from services older than the hand-over. */
+  readonly mode?: "draft" | "send";
+  readonly steer?: boolean;
 };
 
 export type VoiceOutboxPhase = "recording" | "uploading" | "processing" | "no-speech" | "failed";
@@ -35,10 +38,11 @@ export type VoiceHeldMessage = {
   readonly steers?: boolean;
 };
 
-/** A recording the service would send, turned into a message the phone delivers. */
-export type VoiceSteerHandover = {
-  readonly held: VoiceHeldMessage;
-  readonly enqueueMessage: () => Promise<void>;
+/** Where the service sends a recording it was handed. */
+export type VoiceSendTarget = {
+  readonly threadId: string;
+  readonly prefixText: string;
+  readonly steer: boolean;
 };
 
 export type VoiceOutboxItem = {
@@ -48,6 +52,8 @@ export type VoiceOutboxItem = {
   readonly mode: VoiceRecordingDisposition;
   /** Without a thread the service cannot send, so an open composer sends the finished draft. */
   readonly submitDraft: boolean;
+  /** The service steers the running agent with it instead of queueing it. */
+  readonly steers?: boolean;
   readonly heldMessage?: VoiceHeldMessage;
   readonly prefixText: string;
   /** The live words at the end of the recording, shown until the transcript replaces them. */
@@ -79,8 +85,8 @@ export type VoiceServerClient = {
   fetchJob(id: string): Promise<VoiceJob | null>;
   acknowledge(id: string): Promise<void>;
   retry(id: string): Promise<void>;
-  /** Takes sending away from the service; "too-late" once it started, "missing" before the upload. */
-  claim(id: string): Promise<"claimed" | "too-late" | "missing">;
+  /** The service sends the job; "too-late" once it started sending, "missing" before the upload. */
+  handOver(id: string, target: VoiceSendTarget): Promise<"handed" | "too-late" | "missing">;
 };
 
 export type VoiceOutboxDependencies = {
@@ -119,8 +125,8 @@ export type VoiceHandoffTarget = {
   readonly sendsThroughDraft: () => boolean;
   readonly readDraftText: () => string;
   readonly clearDraftText: () => void;
-  /** Asked when a recording is sent: a message that should steer has to leave from the phone. */
-  readonly steerHandover?: (item: VoiceOutboxItem) => VoiceSteerHandover | null;
+  /** Asked when a recording is sent, since the agent may have started or finished meanwhile. */
+  readonly steersActiveTurn?: () => boolean;
 };
 
 const withTranscript = (prefixText: string, transcript: string) =>
@@ -238,16 +244,12 @@ export class VoiceOutbox {
             sourceUri: uri,
             ...(previewText ? { previewText } : {}),
           };
-          const handover = mode === "send" ? (target.steerHandover?.(finished) ?? null) : null;
+          const delivered: VoiceOutboxItem =
+            mode === "send" && target.steersActiveTurn?.()
+              ? { ...finished, steers: true }
+              : finished;
           // The typed text may only leave the draft once it is stored with the recording.
-          // A steering message is held before the upload, so the service never sends it itself.
-          const delivered: VoiceOutboxItem = handover
-            ? await this.holdWith(
-                finished,
-                { ...finished, mode: "draft", heldMessage: { ...handover.held, steers: true } },
-                handover.enqueueMessage,
-              ).catch(() => finished)
-            : await this.persist(finished).then(() => finished);
+          await this.persist(delivered);
           if (mode === "send") target.clearDraftText();
           await this.deliver(delivered);
           if (submitDraft) this.dependencies.startThread(target.ownerKey, id!, previewText);
@@ -299,11 +301,27 @@ export class VoiceOutbox {
   }
 
   /**
-   * Only the phone can steer, the service can only queue. So the message moves
-   * into the thread outbox before the service gives the job up: a crash in
-   * between leaves one held message that a later poll claims or removes, never two sends.
+   * Hands a dictation still on its way to the service, which then sends it to the thread, so
+   * the phone is done once the audio is uploaded. False when the transcript won the race.
    */
-  setSteering(id: string, steers: boolean, handover: () => VoiceSteerHandover): Promise<void> {
+  sendThroughService(
+    id: string,
+    target: {
+      readonly ownerKey: string;
+      readonly threadId: string;
+      readonly prefixText: string;
+      readonly steers: boolean;
+    },
+  ): Promise<boolean> {
+    return this.enqueue(async () => {
+      const item = this.items.get(id);
+      if (!item || item.mode !== "draft" || item.heldMessage || !isInFlight(item)) return false;
+      await this.retarget({ ...item, ...target, mode: "send", submitDraft: false });
+      return true;
+    });
+  }
+
+  setSteering(id: string, steers: boolean): Promise<void> {
     return this.enqueue(async () => {
       const item = this.items.get(id);
       if (!item || !isInFlight(item)) return;
@@ -314,13 +332,7 @@ export class VoiceOutbox {
         }
         return;
       }
-      if (!steers || item.mode !== "send") return;
-      const next = handover();
-      const holding = { ...item, heldMessage: { ...next.held, steers } };
-      await this.holdWith(item, holding, next.enqueueMessage);
-      const client = this.dependencies.getClient();
-      // Offline or not uploaded yet: the next poll claims it.
-      if (client) await this.claimFromService(client, holding).catch(() => {});
+      if (item.mode === "send") await this.retarget({ ...item, steers });
     });
   }
 
@@ -384,31 +396,51 @@ export class VoiceOutbox {
     return holding;
   }
 
-  private async claimFromService(
-    client: VoiceServerClient,
-    item: VoiceOutboxItem,
-  ): Promise<VoiceOutboxItem> {
-    const answer = await client.claim(item.id);
-    if (answer === "missing") return item;
-    if (answer === "claimed") {
-      const claimed: VoiceOutboxItem = { ...item, mode: "draft" };
-      await this.persist(claimed);
-      // Rewrites the upload metadata: uploading this again must not make the service send.
-      await this.dependencies.store.adoptAudio(claimed);
-      return claimed;
-    }
-    const { heldMessage, ...unheld } = item;
-    if (heldMessage) await this.dependencies.heldMessages.remove(heldMessage);
-    await this.persist(unheld);
-    return unheld;
+  /**
+   * Stored, then written into the upload metadata, then told to the service; whatever a crash
+   * or a lost connection skips, the next poll sees the job differ and tells it again.
+   */
+  private async retarget(item: VoiceOutboxItem): Promise<void> {
+    await this.persist(item);
+    await this.dependencies.store.adoptAudio(item);
+    const client = this.dependencies.getClient();
+    if (client && item.phase === "processing") await this.handOver(client, item).catch(() => {});
+  }
+
+  private async handOver(client: VoiceServerClient, item: VoiceOutboxItem): Promise<void> {
+    if (item.threadId === null) return;
+    const answer = await client.handOver(item.id, {
+      threadId: item.threadId,
+      prefixText: item.prefixText,
+      steer: item.steers === true,
+    });
+    // Sending already started: the service's choice stands, so stop asking.
+    if (answer === "too-late") await this.persist({ ...item, steers: !item.steers });
+  }
+
+  /** Apps before the hand-over held steering messages here; the service sends them now. */
+  private async releaseLegacySteer(item: VoiceOutboxItem): Promise<VoiceOutboxItem> {
+    const { heldMessage, ...rest } = item;
+    if (!heldMessage || item.mode !== "send") return item;
+    await this.dependencies.heldMessages.remove(heldMessage);
+    const released = { ...rest, steers: heldMessage.steers === true };
+    await this.persist(released);
+    return released;
   }
 
   private async pollItem(client: VoiceServerClient, stored: VoiceOutboxItem): Promise<void> {
-    const item =
-      stored.mode === "send" && stored.heldMessage
-        ? await this.claimFromService(client, stored)
-        : stored;
+    const item = await this.releaseLegacySteer(stored);
     const job = await client.fetchJob(item.id);
+    if (
+      job?.mode !== undefined &&
+      item.mode === "send" &&
+      (job.mode !== "send" || job.steer !== (item.steers === true)) &&
+      job.status !== "sending" &&
+      !(job.status === "done" && job.mode === "send")
+    ) {
+      await this.handOver(client, item);
+      return;
+    }
     if (!job) {
       client.enqueueUpload(item);
       if (item.phase !== "uploading") await this.persist({ ...item, phase: "uploading" });

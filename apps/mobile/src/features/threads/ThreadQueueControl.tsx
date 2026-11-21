@@ -393,7 +393,7 @@ export function ThreadQueueSheet({ route }: StaticScreenProps<QueueTarget>) {
               undo={voiceItemSteers(item)}
               onPress={() => {
                 void Haptics.selectionAsync();
-                setVoiceSteering(item, !voiceItemSteers(item), target).catch((error: unknown) =>
+                setVoiceSteering(item, !voiceItemSteers(item)).catch((error: unknown) =>
                   Alert.alert(
                     "Could not change this message",
                     error instanceof Error ? error.message : String(error),

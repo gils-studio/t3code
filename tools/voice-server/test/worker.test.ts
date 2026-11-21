@@ -292,3 +292,39 @@ NodeTest.test("a job the service started sending can no longer be claimed", asyn
   NodeAssert.equal(await store.claim("job-claim2", 2_000), false);
   NodeAssert.deepEqual(sent, ["hallo"]);
 });
+
+NodeTest.test("a dictation handed over by the phone is sent and steers", async () => {
+  const sent: Array<{ text: string; steer: boolean | undefined }> = [];
+  const steering: ThreadSender = {
+    send: async (_thread, text, _speaker, steer) => void sent.push({ text, steer }),
+    hasMessage: async () => false,
+  };
+  const target = { threadId: "thread-2", prefixText: "getippt", steer: true };
+  const { store, worker, add } = await harness(
+    {
+      transcribe: async (job) => {
+        if (job.id === "job-hand1") {
+          NodeAssert.notEqual(await store.handOver(job.id, target, 2_000), null);
+        }
+        return "gesprochen";
+      },
+    },
+    steering,
+  );
+  await add("job-hand1", meta({ mode: "draft", threadId: "" }));
+  await worker.runNext();
+  NodeAssert.deepEqual(sent, [{ text: "getippt\n\ngesprochen", steer: true }]);
+
+  // Already transcribed for the draft: handing it over sends it on the next run.
+  await add("job-hand2", meta({ mode: "draft", threadId: "" }));
+  await worker.runNext();
+  NodeAssert.equal(store.get("job-hand2")?.status, "done");
+  await store.handOver("job-hand2", { ...target, prefixText: "", steer: false }, 3_000);
+  NodeAssert.equal(store.get("job-hand2")?.status, "sending");
+  await worker.runNext();
+  NodeAssert.deepEqual(sent.at(-1), { text: "gesprochen", steer: false });
+
+  // Once sent, the target is fixed.
+  NodeAssert.equal(await store.handOver("job-hand2", target, 4_000), null);
+  NodeAssert.equal(store.get("job-hand2")?.steer, false);
+});

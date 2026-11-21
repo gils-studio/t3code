@@ -31,7 +31,7 @@ export function voiceItemLabel(item: VoiceOutboxItem): string {
   if (item.phase === "failed") return item.error ?? "Transcription failed";
   if (item.remoteStatus === "sending") return "Sending message";
   const progress = voiceProgressLabel(item);
-  return item.heldMessage?.steers ? `${progress}, then sends` : progress;
+  return voiceItemSteers(item) ? `${progress}, then sends` : progress;
 }
 
 export type ThreadVoiceStatus = "uploading" | "transcribing" | "failed";
@@ -62,7 +62,8 @@ export function voiceDeliveryNotice(
   };
 }
 
-export const voiceItemSteers = (item: VoiceOutboxItem) => item.heldMessage?.steers === true;
+export const voiceItemSteers = (item: VoiceOutboxItem) =>
+  (item.heldMessage?.steers ?? item.steers) === true;
 
 /** A steering message can always be taken back, even if the agent stopped accepting steers. */
 export const canToggleVoiceSteering = (item: VoiceOutboxItem, agentAcceptsSteering: boolean) =>
