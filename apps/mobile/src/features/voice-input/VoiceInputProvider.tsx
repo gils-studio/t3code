@@ -21,7 +21,7 @@ import {
   voiceInputBlocksSubmission,
   type VoiceTranscriber,
 } from "@t3tools/client-runtime/voice-input";
-import { createLazyVoiceRecorder } from "./lazyVoiceRecorder";
+import { createLazyVoiceRecorder, createRecorderFormatGuard } from "./lazyVoiceRecorder";
 import { getVoiceServer, subscribeVoiceServer, useVoiceServer } from "./voiceOutboxRuntime";
 import { VOICE_WAVEFORM_SAMPLE_COUNT } from "./voiceInputMetering";
 import { VoiceInputSession } from "./voiceInputSession";
@@ -99,11 +99,18 @@ const voiceInputAtom = Atom.make((get) => {
   const permission = createVoiceRecordingPermission(() => {
     void session.controller.appMovedToBackground();
   });
+  const recorderFormat = createRecorderFormatGuard<boolean>({
+    release: () => recorder.release(),
+    isBusy: () => voiceInputBlocksSubmission(session.getSnapshot().state),
+  });
   const recorder = createLazyVoiceRecorder({
-    create: () =>
-      new AudioModule.AudioRecorder(
-        getVoiceServer() ? VOICE_SERVER_RECORDING_OPTIONS : VOICE_RECORDING_OPTIONS,
-      ),
+    create: () => {
+      const forServer = getVoiceServer() !== null;
+      recorderFormat.built(forServer);
+      return new AudioModule.AudioRecorder(
+        forServer ? VOICE_SERVER_RECORDING_OPTIONS : VOICE_RECORDING_OPTIONS,
+      );
+    },
     onStatus: (status: RecordingStatus) => {
       session.controller.handleRecorderStatus({
         isFinished: status.isFinished,
@@ -161,10 +168,14 @@ const voiceInputAtom = Atom.make((get) => {
     publishAudioLevels: (levels) => audioLevels.set(levels),
     keepAwake: () => keepScreenAwake(`voice-input:${++keepAwakeSequence}`),
   });
-  // The format is fixed at construction, so the next recording builds a matching recorder.
-  const unsubscribeServer = subscribeVoiceServer(() => recorder.release());
+  // Each reconnect renews the voice URL; only gaining or losing the service changes the format.
+  const unsubscribeServer = subscribeVoiceServer(() =>
+    recorderFormat.want(getVoiceServer() !== null),
+  );
+  const unsubscribeSession = session.subscribe(recorderFormat.settle);
   get.addFinalizer(() => {
     unsubscribeServer();
+    unsubscribeSession();
     permission.dispose();
     session.dispose();
     recorder.release();

@@ -4,7 +4,11 @@ import { VoiceInputController } from "@t3tools/client-runtime/voice-input";
 
 import { resetVoiceInputGlobalsForTests } from "../../../../../packages/client-runtime/src/voice-input/controller";
 
-import { createLazyVoiceRecorder, type VoiceRecordingInput } from "./lazyVoiceRecorder";
+import {
+  createLazyVoiceRecorder,
+  createRecorderFormatGuard,
+  type VoiceRecordingInput,
+} from "./lazyVoiceRecorder";
 
 type Status = { readonly isFinished: boolean };
 type State = { readonly isRecording: boolean };
@@ -97,6 +101,26 @@ describe("createLazyVoiceRecorder", () => {
     native.emit({ isFinished: false });
 
     expect(statuses).toEqual([{ isFinished: true }]);
+  });
+
+  it("rebuilds for a new format only once no dictation needs the recorder", () => {
+    let busy = true;
+    const release = vi.fn();
+    const format = createRecorderFormatGuard<boolean>({ release, isBusy: () => busy });
+    format.built(true);
+
+    // A reconnect renews the voice URL; the format stays the same.
+    format.want(true);
+    format.want(false);
+    expect(release).not.toHaveBeenCalled();
+
+    busy = false;
+    format.settle();
+    expect(release).toHaveBeenCalledTimes(1);
+
+    format.want(true);
+    format.settle();
+    expect(release).toHaveBeenCalledTimes(1);
   });
 
   describe("with the voice input controller", () => {
