@@ -1,6 +1,5 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFSP from "node:fs/promises";
-import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import type { Config } from "./config.ts";
@@ -22,9 +21,8 @@ type RunOptions = {
 export function spawnArgs(
   command: string,
   args: ReadonlyArray<string>,
-  platform: NodeJS.Platform = NodeOS.platform(),
 ): { readonly file: string; readonly args: ReadonlyArray<string>; readonly verbatim: boolean } {
-  if (platform !== "win32" || !/\.(cmd|bat)$/i.test(command)) {
+  if (!/\.(cmd|bat)$/i.test(command)) {
     return { file: command, args, verbatim: false };
   }
   for (const value of [command, ...args]) {
