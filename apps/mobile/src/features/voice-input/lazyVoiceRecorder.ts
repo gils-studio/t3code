@@ -148,3 +148,33 @@ export function createLazyVoiceRecorder<TStatus, TRecorderState>(input: {
     },
   };
 }
+
+/**
+ * A recorder's format is fixed when it is built. When the wanted format changes, the recorder is
+ * rebuilt, but only once no dictation needs it: releasing it would cut off a running recording.
+ */
+export function createRecorderFormatGuard<TFormat>(input: {
+  readonly release: () => void;
+  readonly isBusy: () => boolean;
+}) {
+  let built: { readonly format: TFormat } | null = null;
+  let wanted: TFormat | undefined;
+  const settle = () => {
+    if (built === null || Object.is(built.format, wanted) || input.isBusy()) return;
+    built = null;
+    input.release();
+  };
+  return {
+    /** Called when the recorder is built, with the format it was built for. */
+    built(format: TFormat) {
+      built = { format };
+      wanted = format;
+    },
+    want(format: TFormat) {
+      wanted = format;
+      settle();
+    },
+    /** Called whenever the dictation state changes, so a deferred rebuild happens once it is idle. */
+    settle,
+  };
+}
