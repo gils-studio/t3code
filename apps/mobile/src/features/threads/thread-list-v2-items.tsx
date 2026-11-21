@@ -1216,6 +1216,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         >
           {thread.title}
         </Text>
+        {/* The author badge sits under the status, so it never narrows the title. */}
+        <View className="items-end gap-0.5">
         <View className="flex-row items-center gap-1.5" style={{ minHeight: titleLineHeight }}>
           {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
           {pinnedRow ? (
@@ -1257,23 +1259,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             </Pressable>
           ) : statusLabel ? (
             <View className="flex-row items-center gap-1">
-              {turnAuthor !== undefined ? (
-                <View
-                  className="mr-0.5 rounded-md bg-subtle-strong px-1.5 py-0.5"
-                  accessibilityLabel={`Started by ${turnAuthor}`}
-                >
-                  <Text
-                    className={cn(
-                      "text-3xs font-t3-bold",
-                      selected
-                        ? selectedThreadRowColors.foregroundClassName
-                        : rowAppearance.mutedForegroundClassName,
-                    )}
-                  >
-                    {turnAuthor}
-                  </Text>
-                </View>
-              ) : null}
               <SymbolView
                 name={statusLabel.icon}
                 size={13}
@@ -1312,6 +1297,24 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
               {timeLabel}
             </Text>
           )}
+        </View>
+        {statusLabel && !showsWoke && turnAuthor !== undefined ? (
+          <View
+            className="rounded-md bg-subtle-strong px-1.5 py-0.5"
+            accessibilityLabel={`Started by ${turnAuthor}`}
+          >
+            <Text
+              className={cn(
+                "text-3xs font-t3-bold",
+                selected
+                  ? selectedThreadRowColors.foregroundClassName
+                  : rowAppearance.mutedForegroundClassName,
+              )}
+            >
+              {turnAuthor}
+            </Text>
+          </View>
+        ) : null}
         </View>
       </View>
       {props.searchMatch ? (
