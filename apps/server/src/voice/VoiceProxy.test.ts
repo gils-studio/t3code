@@ -41,10 +41,7 @@ const proxy = () => {
     Effect.gen(function* () {
       const body =
         request.body._tag === "Stream"
-          ? yield* Stream.mkString(Stream.decodeText(request.body.stream)).pipe(
-              Effect.mapError((cause) => new Error("unreadable body", { cause })),
-              Effect.orDie,
-            )
+          ? yield* Stream.mkString(Stream.decodeText(Stream.orDie(request.body.stream)))
           : "";
       forwarded.push({ url: request.url, headers: { ...request.headers }, body });
       return HttpClientResponse.fromWeb(
