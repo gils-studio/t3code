@@ -1218,103 +1218,105 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         </Text>
         {/* The author badge sits under the status, so it never narrows the title. */}
         <View className="items-end gap-0.5">
-        <View className="flex-row items-center gap-1.5" style={{ minHeight: titleLineHeight }}>
-          {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
-          {pinnedRow ? (
-            <SymbolView
-              name="pin"
-              size={11}
-              tintColorClassName={rowAppearance.mutedIconTintClassName}
-              type="monochrome"
-            />
-          ) : null}
-          {showsWoke ? (
-            <Pressable
-              className="-m-2.5 flex-row items-center gap-1 p-2.5"
-              accessibilityRole="button"
-              accessibilityLabel="Dismiss Woke notification"
-              onPress={handleAcknowledgeWoke}
-              onLongPress={() => undefined}
-              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
-            >
+          <View className="flex-row items-center gap-1.5" style={{ minHeight: titleLineHeight }}>
+            {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
+            {pinnedRow ? (
               <SymbolView
-                name="bell.badge"
-                size={13}
-                tintColorClassName={
-                  selected ? selectedThreadRowColors.iconTintClassName : "accent-warning-foreground"
-                }
+                name="pin"
+                size={11}
+                tintColorClassName={rowAppearance.mutedIconTintClassName}
                 type="monochrome"
-                weight="semibold"
               />
+            ) : null}
+            {showsWoke ? (
+              <Pressable
+                className="-m-2.5 flex-row items-center gap-1 p-2.5"
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss Woke notification"
+                onPress={handleAcknowledgeWoke}
+                onLongPress={() => undefined}
+                style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+              >
+                <SymbolView
+                  name="bell.badge"
+                  size={13}
+                  tintColorClassName={
+                    selected
+                      ? selectedThreadRowColors.iconTintClassName
+                      : "accent-warning-foreground"
+                  }
+                  type="monochrome"
+                  weight="semibold"
+                />
+                <Text
+                  className={cn(
+                    "text-xs font-t3-bold",
+                    selected
+                      ? selectedThreadRowColors.foregroundClassName
+                      : "text-warning-foreground",
+                  )}
+                >
+                  Woke
+                </Text>
+              </Pressable>
+            ) : statusLabel ? (
+              <View className="flex-row items-center gap-1">
+                <SymbolView
+                  name={statusLabel.icon}
+                  size={13}
+                  tintColorClassName={
+                    selected
+                      ? selectedThreadRowColors.iconTintClassName
+                      : statusLabel.iconTintClassName
+                  }
+                  type="monochrome"
+                  weight="semibold"
+                />
+                <Text
+                  className={cn(
+                    "text-xs font-t3-bold",
+                    (status === "working" || status === "waiting") && "tabular-nums",
+                    selected ? selectedThreadRowColors.foregroundClassName : statusLabel.className,
+                  )}
+                >
+                  {statusLabel.label}
+                  {voiceLabel ? null : status === "working" ? (
+                    <ThreadListV2Duration startedAt={resolveThreadWorkingStartedAt(thread)} />
+                  ) : status === "waiting" ? (
+                    <ThreadListV2Duration startedAt={thread.latestRun?.completedAt ?? null} />
+                  ) : null}
+                </Text>
+              </View>
+            ) : (
               <Text
                 className={cn(
-                  "text-xs font-t3-bold",
+                  "text-xs tabular-nums",
                   selected
                     ? selectedThreadRowColors.foregroundClassName
-                    : "text-warning-foreground",
+                    : rowAppearance.tertiaryForegroundClassName,
                 )}
               >
-                Woke
+                {timeLabel}
               </Text>
-            </Pressable>
-          ) : statusLabel ? (
-            <View className="flex-row items-center gap-1">
-              <SymbolView
-                name={statusLabel.icon}
-                size={13}
-                tintColorClassName={
-                  selected
-                    ? selectedThreadRowColors.iconTintClassName
-                    : statusLabel.iconTintClassName
-                }
-                type="monochrome"
-                weight="semibold"
-              />
+            )}
+          </View>
+          {statusLabel && !showsWoke && turnAuthor !== undefined ? (
+            <View
+              className="rounded-md bg-subtle-strong px-1.5 py-0.5"
+              accessibilityLabel={`Started by ${turnAuthor}`}
+            >
               <Text
                 className={cn(
-                  "text-xs font-t3-bold",
-                  (status === "working" || status === "waiting") && "tabular-nums",
-                  selected ? selectedThreadRowColors.foregroundClassName : statusLabel.className,
+                  "text-3xs font-t3-bold",
+                  selected
+                    ? selectedThreadRowColors.foregroundClassName
+                    : rowAppearance.mutedForegroundClassName,
                 )}
               >
-                {statusLabel.label}
-                {voiceLabel ? null : status === "working" ? (
-                  <ThreadListV2Duration startedAt={resolveThreadWorkingStartedAt(thread)} />
-                ) : status === "waiting" ? (
-                  <ThreadListV2Duration startedAt={thread.latestRun?.completedAt ?? null} />
-                ) : null}
+                {turnAuthor}
               </Text>
             </View>
-          ) : (
-            <Text
-              className={cn(
-                "text-xs tabular-nums",
-                selected
-                  ? selectedThreadRowColors.foregroundClassName
-                  : rowAppearance.tertiaryForegroundClassName,
-              )}
-            >
-              {timeLabel}
-            </Text>
-          )}
-        </View>
-        {statusLabel && !showsWoke && turnAuthor !== undefined ? (
-          <View
-            className="rounded-md bg-subtle-strong px-1.5 py-0.5"
-            accessibilityLabel={`Started by ${turnAuthor}`}
-          >
-            <Text
-              className={cn(
-                "text-3xs font-t3-bold",
-                selected
-                  ? selectedThreadRowColors.foregroundClassName
-                  : rowAppearance.mutedForegroundClassName,
-              )}
-            >
-              {turnAuthor}
-            </Text>
-          </View>
-        ) : null}
+          ) : null}
         </View>
       </View>
       {props.searchMatch ? (
