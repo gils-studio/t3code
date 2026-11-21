@@ -12,8 +12,25 @@ type RunOptions = {
   readonly timeoutMillis: number;
   readonly stdin?: string;
   readonly cwd?: string;
-  readonly shell?: boolean;
 };
+
+/**
+ * Node only starts a .cmd shim through cmd.exe. Quoting each argument ourselves keeps
+ * cmd's metacharacters inert; what quotes cannot protect is refused instead.
+ */
+export function spawnArgs(
+  command: string,
+  args: ReadonlyArray<string>,
+): { readonly file: string; readonly args: ReadonlyArray<string>; readonly verbatim: boolean } {
+  if (!/\.(cmd|bat)$/i.test(command)) {
+    return { file: command, args, verbatim: false };
+  }
+  for (const value of [command, ...args]) {
+    if (/["%!\r\n]/.test(value)) throw new Error(`Unsafe argument for cmd.exe: ${value}`);
+  }
+  const line = [command, ...args].map((value) => `"${value}"`).join(" ");
+  return { file: "cmd.exe", args: ["/d", "/s", "/c", `"${line}"`], verbatim: true };
+}
 
 function run(
   command: string,
@@ -21,9 +38,10 @@ function run(
   options: RunOptions,
 ): Promise<{ readonly stdout: string }> {
   return new Promise((resolve, reject) => {
-    const child = NodeChildProcess.spawn(command, args, {
+    const spawned = spawnArgs(command, args);
+    const child = NodeChildProcess.spawn(spawned.file, spawned.args, {
       cwd: options.cwd,
-      shell: options.shell ?? false,
+      windowsVerbatimArguments: spawned.verbatim,
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -224,7 +242,6 @@ export class T3CliSender implements ThreadSender {
     await run(this.config.t3Command, ["thread", "send", threadId, "-", ...mode], {
       stdin: `${voiceMessagePrefix(speaker)}${text}`,
       timeoutMillis: 120_000,
-      shell: true,
     });
   }
 
@@ -233,10 +250,7 @@ export class T3CliSender implements ThreadSender {
     const { stdout } = await run(
       this.config.t3Command,
       ["thread", "show", threadId, "--json", "--messages", "50"],
-      {
-        timeoutMillis: 60_000,
-        shell: true,
-      },
+      { timeoutMillis: 60_000 },
     );
     return stdout.includes(JSON.stringify(text).slice(1, -1));
   }

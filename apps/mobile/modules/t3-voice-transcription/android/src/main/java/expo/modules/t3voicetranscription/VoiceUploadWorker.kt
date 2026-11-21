@@ -10,6 +10,7 @@ import androidx.work.ForegroundInfo
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
@@ -114,8 +115,21 @@ class VoiceUploadWorker(context: Context, parameters: WorkerParameters) :
             )
           )
           .build()
-      WorkManager.getInstance(context)
-        .enqueueUniqueWork("voice-upload-$id", ExistingWorkPolicy.KEEP, request)
+      val workManager = WorkManager.getInstance(context)
+      val name = "voice-upload-$id"
+      val existing = workManager.getWorkInfosForUniqueWork(name)
+      existing.addListener(
+        {
+          // A retry would sit out its backoff after a reconnect; only a running upload is kept.
+          val running =
+            runCatching { existing.get() }.getOrNull().orEmpty().any {
+              it.state == WorkInfo.State.RUNNING
+            }
+          val policy = if (running) ExistingWorkPolicy.KEEP else ExistingWorkPolicy.REPLACE
+          workManager.enqueueUniqueWork(name, policy, request)
+        },
+        Runnable::run
+      )
     }
   }
 }

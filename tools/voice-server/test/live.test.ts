@@ -14,7 +14,7 @@ async function harness(answers: ReadonlyArray<ReadonlyArray<SpeechSegment>>) {
   const state = {
     busy: false,
     silent: false,
-    wavBytes: 0,
+    wavBytes: 20 * 32_000,
     now: 0,
     starts: [] as number[],
     recognized: 0,
@@ -62,12 +62,21 @@ NodeTest.test("a long talk settles old words and only decodes the recent window"
   NodeAssert.deepEqual(state.starts, [0, 0, 9]);
 });
 
+NodeTest.test("the window never starts past the audio received so far", async () => {
+  const { state, speak } = await harness([[segment(0, 9, " Hallo Welt"), segment(25, 28, " und")]]);
+  NodeAssert.equal(await speak(), "Hallo Welt und");
+  // No new samples yet: whisper-server would answer an empty window with 400.
+  state.wavBytes = 78;
+  await speak();
+  NodeAssert.equal(state.recognized, 1);
+  NodeAssert.equal(state.starts.at(-1), 20);
+});
+
 NodeTest.test("a name split across a settled window is still corrected", async () => {
-  const { state, speak } = await harness([
+  const { speak } = await harness([
     [segment(0, 9, " Die App"), segment(9, 14, " Pi"), segment(14, 17, "dor")],
     [segment(0, 3, "dor")],
   ]);
-  state.wavBytes = 20 * 32_000;
   NodeAssert.equal(await speak(), "Die App Pidohr");
 });
 
@@ -75,7 +84,6 @@ NodeTest.test("noise markers and silence never reach the preview", async () => {
   const { state, speak } = await harness([[segment(0, 2, " * Musik *")]]);
   NodeAssert.equal(await speak(), "");
   state.silent = true;
-  state.wavBytes = 20 * 32_000;
   NodeAssert.equal(await speak(), "");
   NodeAssert.equal(state.recognized, 1);
   await speak();
@@ -104,9 +112,10 @@ NodeTest.test("a failed update leaves the preview running", async () => {
   let calls = 0;
   const live = new LiveTranscriber({
     directory,
-    decode: async () => {
+    decode: async (_audio, wav) => {
       calls += 1;
       if (calls === 1) throw new Error("truncated frame");
+      await NodeFSP.writeFile(wav, Buffer.alloc(32_000));
     },
     isSilent: async () => false,
     recognize: async () => ({ segments: [segment(0, 1, " wieder da")] }),
