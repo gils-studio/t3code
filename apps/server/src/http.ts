@@ -3,6 +3,7 @@ import {
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   EnvironmentHttpApi,
+  VOICE_ROUTE_PREFIX,
 } from "@t3tools/contracts";
 import { isDevProxiedPath } from "@t3tools/shared/devProxy";
 import { injectMcpAppCookieBootstrap, injectMcpAppThemeBootstrap } from "@t3tools/shared/mcpApp";
@@ -397,7 +398,8 @@ const layerUntracedRequests = Layer.succeed(HttpMiddleware.TracerDisabledWhen)((
     UNTRACED_REQUEST_PATHS.has(path) ||
     path.startsWith(`${WEBHOOK_ROUTE_PREFIX}/`) ||
     path.startsWith(`${ASSET_ROUTE_PREFIX}/`) ||
-    path.startsWith(`${ATTACHMENT_UPLOAD_ROUTE_PREFIX}/`)
+    path.startsWith(`${ATTACHMENT_UPLOAD_ROUTE_PREFIX}/`) ||
+    path.startsWith(`${VOICE_ROUTE_PREFIX}/`)
   );
 });
 

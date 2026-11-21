@@ -1,14 +1,12 @@
 # Installs the voice server for the current Windows user and starts it at every logon.
-# Rerun after an update; config, device tokens and queued jobs are kept.
+# Rerun after an update; config and queued jobs are kept.
 param(
   [Parameter(Mandatory)] [string] $WhisperDirectory,
   [Parameter(Mandatory)] [string] $Model,
   [Parameter(Mandatory)] [string] $Ffmpeg,
   [string] $VadModel = "",
   [string] $T3Command = "t3",
-  [int] $Port = 4791,
-  [string] $TunnelName = "t3-voice",
-  [string] $PublicUrl = "https://t3-voice.dev.gweiermann.de"
+  [int] $Port = 4791
 )
 $ErrorActionPreference = "Stop"
 
@@ -33,9 +31,6 @@ Copy-Item -Force (Join-Path $PSScriptRoot "..\package.json") $app
 if (-not (Test-Path $configPath)) {
   $config = [ordered]@{
     port        = $Port
-    tokenHashes = @()
-    publicUrl   = $PublicUrl
-    tunnelName  = $TunnelName
     whisperCli  = Join-Path $WhisperDirectory "whisper-cli.exe"
     whisperCwd  = $WhisperDirectory
     whisperArgs = @("-bs", "5")
@@ -67,4 +62,4 @@ $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoi
   -Priority 4
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
 Start-ScheduledTask -TaskName $taskName
-Write-Output "Running. Pair a phone with: node `"$app\src\main.ts`" pair <name>"
+Write-Output "Running. Phones connected to T3 Code on this computer use it on their own."

@@ -4,7 +4,13 @@ import { AppRegistry } from "react-native";
 import type { VoiceDeliveryNotice, VoiceUpload } from "./voiceUpload";
 
 type VoiceUploadModule = {
-  enqueueUpload(id: string, audioUri: string, metaUri: string, url: string, token: string): void;
+  enqueueUpload(
+    id: string,
+    audioUri: string,
+    metaUri: string,
+    endpointUri: string,
+    path: string,
+  ): void;
   // Missing in native builds from before the delivery service.
   showDelivery?(title: string, text: string): boolean;
   hideDelivery?(): void;
@@ -15,7 +21,13 @@ const native = requireOptionalNativeModule<VoiceUploadModule>("T3VoiceTranscript
 export const voiceUploadSupported = native !== null;
 
 export function enqueueVoiceUpload(upload: VoiceUpload): void {
-  native?.enqueueUpload(upload.id, upload.audioUri, upload.metaUri, upload.url, upload.token);
+  native?.enqueueUpload(
+    upload.id,
+    upload.audioUri,
+    upload.metaUri,
+    upload.endpointUri,
+    upload.path,
+  );
 }
 
 const deliveryTaskEnds = new Set<() => void>();

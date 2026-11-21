@@ -1,17 +1,9 @@
-import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 export type Config = {
   readonly port: number;
-  /** SHA-256 hashes of device tokens; the tokens themselves are never stored here. */
-  readonly tokenHashes: ReadonlyArray<string>;
-  /** Token hash to the person who owns that phone; agents read the name in the voice marker. */
-  readonly speakers?: Readonly<Record<string, string>>;
-  readonly publicUrl: string;
-  /** Subdomain on the sish tunnel host; null keeps the service on loopback only. */
-  readonly tunnelName: string | null;
   readonly whisperCli: string;
   readonly whisperCwd: string;
   readonly whisperArgs: ReadonlyArray<string>;
@@ -34,15 +26,15 @@ export async function readConfig(): Promise<Config> {
   return JSON.parse(await NodeFSP.readFile(configPath(), "utf8")) as Config;
 }
 
-const readConfigNow = () => JSON.parse(NodeFS.readFileSync(configPath(), "utf8")) as Config;
+/** The T3 server on this machine reads this to proxy `/api/voice` here; see VoiceProxy.ts. */
+export const linkPath = (): string => NodePath.join(dataDirectory(), "t3-link.json");
 
-/** Read per request, so a phone paired while the service runs works at once. */
-export const readTokenHashes = (): ReadonlyArray<string> => readConfigNow().tokenHashes;
-
-export const readSpeakers = (): Readonly<Record<string, string>> => readConfigNow().speakers ?? {};
-
-export async function writeConfig(config: Config): Promise<void> {
-  const temporary = `${configPath()}.tmp`;
-  await NodeFSP.writeFile(temporary, JSON.stringify(config, null, 2));
-  await NodeFSP.rename(temporary, configPath());
+export async function writeLink(link: {
+  readonly url: string;
+  readonly token: string;
+  readonly environmentId: string;
+}): Promise<void> {
+  const temporary = `${linkPath()}.tmp`;
+  await NodeFSP.writeFile(temporary, JSON.stringify(link), { mode: 0o600 });
+  await NodeFSP.rename(temporary, linkPath());
 }

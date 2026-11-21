@@ -107,6 +107,7 @@ import {
   AttachmentDeleteInput,
   AttachmentUploadSigningKeyError,
 } from "./assets.ts";
+import { VoiceAccessResult, VoiceAccessSigningKeyError } from "./voice.ts";
 import {
   PersistChatAttachmentsError,
   PersistChatAttachmentsInput,
@@ -427,6 +428,7 @@ export const WS_METHODS = {
   assetsPersistChatAttachments: "assets.persistChatAttachments",
   attachmentsCreateUploadUrl: "attachments.createUploadUrl",
   attachmentsDelete: "attachments.delete",
+  voiceAccess: "voice.access",
 
   mcpAppsCallTool: "mcpApps.callTool",
   mcpAppsToolInfo: "mcpApps.toolInfo",
@@ -1413,6 +1415,12 @@ const WsAttachmentsDeleteRpc = Rpc.make(WS_METHODS.attachmentsDelete, {
   error: EnvironmentAuthorizationError,
 });
 
+const WsVoiceAccessRpc = Rpc.make(WS_METHODS.voiceAccess, {
+  payload: Schema.Struct({}),
+  success: VoiceAccessResult,
+  error: Schema.Union([VoiceAccessSigningKeyError, EnvironmentAuthorizationError]),
+});
+
 const WsMcpAppsCallToolRpc = Rpc.make(WS_METHODS.mcpAppsCallTool, {
   payload: McpAppCallToolInput,
   success: McpAppCallToolResult,
@@ -2122,6 +2130,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsAssetsPersistChatAttachmentsRpc,
   WsAttachmentsCreateUploadUrlRpc,
   WsAttachmentsDeleteRpc,
+  WsVoiceAccessRpc,
   WsMcpAppsCallToolRpc,
   WsMcpAppsToolInfoRpc,
   WsMcpAppsReadResourceRpc,

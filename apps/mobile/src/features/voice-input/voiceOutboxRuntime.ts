@@ -1,7 +1,17 @@
+import { resolveAssetUrl } from "@t3tools/client-runtime/state/assets";
+import {
+  createEnvironmentRpcCommand,
+  runAtomCommand,
+} from "@t3tools/client-runtime/state/runtime";
+import { type EnvironmentId, WS_METHODS } from "@t3tools/contracts";
+import * as Option from "effect/Option";
 import { File, FileMode } from "expo-file-system";
-import * as Linking from "expo-linking";
 import { useEffect, useEffectEvent, useSyncExternalStore } from "react";
-import { Alert, AppState } from "react-native";
+import { AppState } from "react-native";
+
+import { connectionAtomRuntime } from "../../connection/runtime";
+import { connectedEnvironmentIdsAtom } from "../../state/presentation";
+import { environmentSession } from "../../state/session";
 
 import { uuidv4 } from "../../lib/uuid";
 import { showVoiceDelivery, voiceUploadSupported } from "../../native/voiceUpload";
@@ -34,12 +44,9 @@ import {
   voiceDeliveryNotice,
   voicePreviewText,
 } from "./voiceThreadMessages";
+import { chooseVoiceServer, type VoiceAccessAnswer } from "./voiceAccess";
 import {
   createVoiceServerClient,
-  deleteVoiceServerConfig,
-  fetchVoiceServerConfig,
-  isVoicePairLink,
-  parseVoicePairLink,
   readVoiceServerConfig,
   writeVoiceServerConfig,
   type VoiceServerConfig,
@@ -257,29 +264,57 @@ export async function enqueueWithPendingVoice(
   return enqueueThreadOutboxMessage({ ...message, text: draftText });
 }
 
-export async function pairVoiceServer(link: string): Promise<void> {
-  const pairing = parseVoicePairLink(link);
-  if (!pairing) throw new Error("This is not a voice server link.");
-  const config = await fetchVoiceServerConfig(pairing);
-  await writeVoiceServerConfig(config);
-  applyServer(config);
+const voiceAccessCommand = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  label: "environment-command:voice:access",
+  tag: WS_METHODS.voiceAccess,
+});
+
+async function askForVoiceAccess(environmentId: EnvironmentId): Promise<VoiceAccessAnswer> {
+  const result = await runAtomCommand(
+    appAtomRegistry,
+    voiceAccessCommand,
+    { environmentId, input: {} },
+    { reportFailure: false, reportDefect: false },
+  );
+  if (result._tag !== "Success") return "unknown";
+  if (result.value.relativeUrl === null) return { url: null };
+  const connection = appAtomRegistry.get(
+    environmentSession.preparedConnectionValueAtom(environmentId),
+  );
+  return Option.isNone(connection)
+    ? "unknown"
+    : { url: resolveAssetUrl(connection.value.httpBaseUrl, result.value.relativeUrl) };
 }
 
-/** Recordings still in the outbox stay there and continue after pairing again. */
-export async function forgetVoiceServer(): Promise<void> {
-  await deleteVoiceServerConfig();
-  applyServer(null);
+/** Saved first: the background upload and a later cold start read what was chosen here. */
+async function lookUpVoiceAccess(environmentId: EnvironmentId): Promise<void> {
+  const answer = await askForVoiceAccess(environmentId);
+  const next = chooseVoiceServer(
+    server,
+    environmentId,
+    answer,
+    appAtomRegistry.get(connectedEnvironmentIdsAtom),
+  );
+  if (next?.url === server?.url) return;
+  await writeVoiceServerConfig(next);
+  applyServer(next);
 }
 
-function handlePairLink(link: string | null): void {
-  if (!link || !isVoicePairLink(link)) return;
-  pairVoiceServer(link).then(
-    () => Alert.alert("Voice server connected", "Recordings now transcribe on your computer."),
-    (error: unknown) =>
-      Alert.alert(
-        "Could not connect the voice server",
-        error instanceof Error ? error.message : String(error),
-      ),
+/** Each (re)connect renews the URL, which also follows a relay address that changed meanwhile. */
+function watchVoiceAccess(): void {
+  let connected = new Set<EnvironmentId>();
+  appAtomRegistry.subscribe(
+    connectedEnvironmentIdsAtom,
+    (environmentIds) => {
+      for (const environmentId of environmentIds) {
+        if (connected.has(environmentId)) continue;
+        lookUpVoiceAccess(environmentId).catch((error: unknown) =>
+          console.warn("[voice] looking up the voice service failed", error),
+        );
+      }
+      connected = new Set(environmentIds);
+    },
+    { immediate: true },
   );
 }
 
@@ -302,12 +337,11 @@ export function startVoiceOutbox(): void {
     voiceOutbox.setForeground(state === "active");
     if (state === "active") syncVoiceDelivery(true);
   });
-  Linking.addEventListener("url", ({ url }) => handlePairLink(url));
-  void Linking.getInitialURL().then(handlePairLink);
   void readVoiceServerConfig()
     .catch(() => null)
     .then((config) => {
       if (config && server === null) applyServer(config);
+      watchVoiceAccess();
       return voiceOutbox.recover();
     });
 }

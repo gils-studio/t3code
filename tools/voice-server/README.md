@@ -12,15 +12,11 @@ Needs Node 24, ffmpeg, a whisper.cpp build and a model such as `ggml-large-v3-tu
 
 This copies the service to `~/.t3-voice/app`, writes `~/.t3-voice/config.json` once, and starts a scheduled task at logon. Logs go to `~/.t3-voice/service.log`.
 
-## Pair a phone
+## How the phone reaches it
 
-```powershell
-node ~/.t3-voice/app/src/main.ts pair Nils
-```
+The service listens on loopback only. At start it writes `~/.t3-voice/t3-link.json` with its port, a fresh token and the environment it sends into. The T3 server of that environment reads the file and proxies `/api/voice/*` here, so the phone uses the connection it already has to T3 (LAN, Tailscale or T3 Connect) and needs no pairing. A T3 server of another environment, such as a dev server, offers no voice service.
 
-Open the printed link on the phone, or paste it under Settings → Microphone → Voice server. Each run creates a new device token and stores only its hash. To revoke a phone, remove its hash from `tokenHashes` in the config and restart the task.
-
-The name says who speaks on this phone. It lands in `speakers` in the config (token hash to name, editable by hand, read per request) and every message from that phone starts with `[Voice message from Nils]`, so an agent knows who it is talking to. Clients hide the marker. The name comes from the token, so a phone cannot claim to be someone else. Without a name the marker stays `[Voice message]`.
+The name in `[Voice message from Nils]` is the author name set on the phone. Clients hide the marker. Without a name the marker stays `[Voice message]`.
 
 ## How it behaves
 
@@ -48,10 +44,6 @@ Whisper has no real dictionary, so `~/.t3-voice/vocabulary.json` works in two st
 ```
 
 Do not pass `-mc 0` in `whisperArgs`: whisper.cpp then drops the prompt without a word. A prompt can also be repeated back on audio without speech, which the Silero gate catches, so keep `-VadModel` set.
-
-## Reachability
-
-With `tunnelName` set, the service keeps an ssh tunnel open through the `devtunnel` host, so the phone reaches it from anywhere. The URL is public; the device token is what protects it. A leaked token lets its holder send messages to your threads, so treat it like a password.
 
 ## Tests
 
