@@ -7,9 +7,9 @@ import * as NodeTest from "node:test";
 
 import { spawnArgs } from "../src/adapters.ts";
 
-NodeTest.test("a .cmd shim gets its arguments verbatim, with cmd metacharacters inert", {
-  skip: process.platform !== "win32" && "cmd.exe only exists on Windows",
-}, async () => {
+const onlyWindows = { skip: NodeOS.platform() !== "win32" && "cmd.exe only exists on Windows" };
+
+NodeTest.test("a .cmd shim keeps cmd metacharacters inert", onlyWindows, async () => {
   const directory = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "voice-cmd "));
   const shim = NodePath.join(directory, "echo args.cmd");
   await NodeFSP.writeFile(shim, "@echo off\r\necho %1 %2\r\n");

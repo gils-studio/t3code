@@ -73,7 +73,7 @@ NodeTest.test("the window never starts past the audio received so far", async ()
 });
 
 NodeTest.test("a name split across a settled window is still corrected", async () => {
-  const { state, speak } = await harness([
+  const { speak } = await harness([
     [segment(0, 9, " Die App"), segment(9, 14, " Pi"), segment(14, 17, "dor")],
     [segment(0, 3, "dor")],
   ]);
