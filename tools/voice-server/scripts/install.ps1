@@ -5,7 +5,8 @@ param(
   [Parameter(Mandatory)] [string] $Model,
   [Parameter(Mandatory)] [string] $Ffmpeg,
   [string] $VadModel = "",
-  [string] $T3Command = "t3",
+  # The CLI the desktop app installs; a global npm t3 can be older and lack `thread send --mode`.
+  [string] $T3Command = (Join-Path $env:USERPROFILE ".t3\bin\t3.cmd"),
   [int] $Port = 4791
 )
 $ErrorActionPreference = "Stop"

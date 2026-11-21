@@ -26,7 +26,7 @@ The name in `[Voice message from Nils]` is the author name set on the phone. Cli
 - The phone gets its success only after the audio is on disk here; jobs survive a restart of the service.
 - A failing transcription retries, then ends as failed with the audio kept. Sending retries for as long as T3 is unreachable.
 - A recording whisper mostly had to guess (a covered or distant mic, heavy noise) ends as failed at once instead of sending invented words. Retry on the phone transcribes it anyway.
-- Once the audio is here the phone is done: this service sends every message, also one that steers the running agent (`t3 thread send --mode auto`) and a dictation the app hands over when its message was sent from the composer before the words arrived (`POST /v1/jobs/:id/send`). Only messages with attachments or for a chat that does not exist yet still leave from the phone. Steering needs a T3 CLI with `--mode`.
+- Once the audio is here the phone is done: this service sends every message, also one that steers the running agent (`t3 thread send --mode auto`) and a dictation the app hands over when its message was sent from the composer before the words arrived (`POST /v1/jobs/:id/send`). Only messages with attachments or for a chat that does not exist yet still leave from the phone. Steering needs a T3 CLI with `--mode`; the installer uses the one the desktop app installs (`~/.t3/bin/t3.cmd`), and `t3Command` in `config.json` overrides it.
 - Finished jobs are removed after 14 days.
 
 ## Vocabulary
