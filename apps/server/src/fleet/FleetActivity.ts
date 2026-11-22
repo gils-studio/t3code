@@ -32,7 +32,6 @@ const EMPTY: FleetActivitySnapshot = { threads: {} };
 const POLL_INTERVAL = Duration.seconds(10);
 const MAX_ENTRIES_PER_THREAD = 8;
 
-
 const text = (value: unknown, max: number): string | undefined =>
   typeof value === "string" && value.trim() !== "" ? value.trim().slice(0, max) : undefined;
 
@@ -52,7 +51,8 @@ export function parseFleetActivity(stdout: string): FleetActivitySnapshot {
     const kind = row?.kind;
     if (!thread || !where || (kind !== "job" && kind !== "run" && kind !== "lease")) continue;
     const label = text(row.label, 60);
-    const since = typeof row.since === "number" && Number.isFinite(row.since) ? row.since : undefined;
+    const since =
+      typeof row.since === "number" && Number.isFinite(row.since) ? row.since : undefined;
     const entry: FleetActivityEntry = {
       kind,
       where,
@@ -92,9 +92,7 @@ const make = Effect.gen(function* () {
     const next = parseFleetActivity(result.stdout);
     const current = yield* SubscriptionRef.get(snapshotRef);
     if (!sameSnapshot(current, next)) yield* SubscriptionRef.set(snapshotRef, next);
-  }).pipe(
-    Effect.catchCause((cause) => Effect.logDebug("fleet activity poll failed", cause)),
-  );
+  }).pipe(Effect.catchCause((cause) => Effect.logDebug("fleet activity poll failed", cause)));
 
   // Without listeners nothing is asked; the next first listener polls at once.
   const loop: Effect.Effect<never> = Effect.gen(function* () {

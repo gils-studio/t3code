@@ -1317,9 +1317,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
                     name="laptopcomputer"
                     size={10}
                     tintColorClassName={
-                      selected
-                        ? selectedThreadRowColors.iconTintClassName
-                        : "accent-icon-muted"
+                      selected ? selectedThreadRowColors.iconTintClassName : "accent-icon-muted"
                     }
                     type="monochrome"
                   />

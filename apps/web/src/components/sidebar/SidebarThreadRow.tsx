@@ -1326,7 +1326,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         )}
                       >
                         {fleetBadge}
-{turnAuthorBadge}
+                        {turnAuthorBadge}
                         <TopStatusIcon icon={topStatus.icon} className="size-3" />
                         {topStatus.label}
                       </span>
@@ -1515,7 +1515,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                           )}
                         >
                           {fleetBadge}
-{turnAuthorBadge}
+                          {turnAuthorBadge}
                           <TopStatusIcon icon={topStatus.icon} className="size-4" />
                           {/* Not a live region: a collapsed sidebar is inert, so
                             BackgroundThreadAnnouncer and the open thread's
