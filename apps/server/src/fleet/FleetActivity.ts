@@ -16,12 +16,8 @@ import * as ProcessRunner from "../processRunner.ts";
 import { forkParked } from "../serverActivation.ts";
 
 /**
- * Which fleet machine each thread's work runs on (gils-studio/t3code#91, gils-studio/fleet#104).
- *
- * The agent sessions run here, but they send builds, test suites and phone tests to the fleet:
- * `fleet activity --json` lists that work with the T3 thread that started it. This service asks it
- * while at least one client listens, and publishes a snapshot by thread id. A machine without the
- * fleet controller (`~/.fleet/app`) never asks and publishes an empty snapshot.
+ * Fleet work by thread from `fleet activity --json` (gils-studio/t3code#91), asked only while a
+ * client listens. Without the fleet controller (`~/.fleet/app`) the snapshot stays empty.
  */
 export class FleetActivity extends Context.Service<
   FleetActivity,

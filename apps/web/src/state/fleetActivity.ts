@@ -8,7 +8,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { connectionAtomRuntime } from "../connection/runtime";
 import { useEnvironmentQuery } from "./query";
 
-export const fleetActivity = createFleetActivityAtoms(connectionAtomRuntime);
+const fleetActivity = createFleetActivityAtoms(connectionAtomRuntime);
 
 /**
  * The fleet machine a working thread's builds and tests run on (gils-studio/t3code#91). Pass a

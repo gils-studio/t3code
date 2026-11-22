@@ -794,8 +794,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   );
   const fleetBadge =
     fleet !== null ? (
-      <Badge variant="outline" size="sm" title={fleet.description} className="max-w-28 gap-0.5">
-        <LaptopIcon className="size-2.5 shrink-0" aria-hidden />
+      <Badge variant="outline" size="sm" title={fleet.description} className="max-w-28">
+        <LaptopIcon className="mr-0.5 size-2.5 shrink-0" aria-hidden />
         <span className="truncate">{fleet.text}</span>
       </Badge>
     ) : null;
