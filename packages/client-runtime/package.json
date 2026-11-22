@@ -223,6 +223,10 @@
       "types": "./src/state/device.ts",
       "default": "./src/state/device.ts"
     },
+    "./state/fleetActivity": {
+      "types": "./src/state/fleetActivity.ts",
+      "default": "./src/state/fleetActivity.ts"
+    },
     "./state/deviceHubAccess": {
       "types": "./src/state/deviceHubAccess.ts",
       "default": "./src/state/deviceHubAccess.ts"
