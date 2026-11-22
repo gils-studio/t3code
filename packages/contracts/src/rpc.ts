@@ -309,6 +309,7 @@ import {
   DeviceSession,
   DeviceShutdownInput,
 } from "./device.ts";
+import { FleetActivitySnapshot } from "./fleetActivity.ts";
 import {
   ServerConfigStreamEvent,
   DesktopUpdateCommitInput,
@@ -614,6 +615,7 @@ export const WS_METHODS = {
   subscribeServerLifecycle: "subscribeServerLifecycle",
   subscribeAuthAccess: "subscribeAuthAccess",
   subscribeResourceTelemetry: "subscribeResourceTelemetry",
+  subscribeFleetActivity: "subscribeFleetActivity",
 } as const;
 
 const WsServerUpsertKeybindingRpc = Rpc.make(WS_METHODS.serverUpsertKeybinding, {
@@ -1720,6 +1722,14 @@ const WsDeviceActionRpc = Rpc.make(WS_METHODS.deviceAction, {
   error: Schema.Union([DeviceError, EnvironmentAuthorizationError]),
 });
 
+/** Fleet work per thread (gils-studio/t3code#91): a full snapshot on every change. */
+const WsSubscribeFleetActivityRpc = Rpc.make(WS_METHODS.subscribeFleetActivity, {
+  payload: Schema.Struct({}),
+  success: FleetActivitySnapshot,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
 const WsSubscribeDeviceStateRpc = Rpc.make(WS_METHODS.subscribeDeviceState, {
   payload: Schema.Struct({}),
   success: DeviceServiceState,
@@ -2183,6 +2193,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsDeviceDetailRpc,
   WsDeviceActionRpc,
   WsSubscribeDeviceStateRpc,
+  WsSubscribeFleetActivityRpc,
   WsSubscribeServerConfigRpc,
   WsSubscribeServerLifecycleRpc,
   WsSubscribeAuthAccessRpc,

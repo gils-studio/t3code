@@ -37,6 +37,7 @@ import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSw
 
 import type { ThreadListProvider } from "../../state/thread-list-environments";
 import { SymbolView, type AppSymbolName } from "../../components/ui/AppSymbol";
+import { useThreadFleetBadge } from "../../state/fleetActivity";
 import { AppText as Text } from "../../components/ui/AppText";
 import { Menu } from "../../components/ui/Menu";
 import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
@@ -818,6 +819,11 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     (status === "working" || status === "waiting") && voiceLabel === undefined
       ? thread.turnAuthor
       : undefined;
+  // The session runs on the environment's machine; its builds and tests may run on the fleet.
+  const fleetBadge = useThreadFleetBadge(
+    status === "working" || status === "waiting" ? thread.environmentId : null,
+    thread.id,
+  );
   const recede = shouldRecedeThreadRow({ status, selected });
   const isRegeneratingTitle = thread.titleRegeneration != null;
   const rowAccessibilityLabel = `${thread.title}${props.hasQueuedMessages ? ", messages queued to send" : ""}${isRegeneratingTitle ? ", regenerating title" : ""}`;
@@ -1300,21 +1306,53 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
               </Text>
             )}
           </View>
-          {statusLabel && !showsWoke && turnAuthor !== undefined ? (
-            <View
-              className="rounded-md bg-subtle-strong px-1.5 py-0.5"
-              accessibilityLabel={`Started by ${turnAuthor}`}
-            >
-              <Text
-                className={cn(
-                  "text-3xs font-t3-bold",
-                  selected
-                    ? selectedThreadRowColors.foregroundClassName
-                    : rowAppearance.mutedForegroundClassName,
-                )}
-              >
-                {turnAuthor}
-              </Text>
+          {statusLabel && !showsWoke && (turnAuthor !== undefined || fleetBadge !== null) ? (
+            <View className="flex-row items-center gap-1">
+              {fleetBadge !== null ? (
+                <View
+                  className="flex-row items-center gap-0.5 rounded-md border border-border px-1 py-px"
+                  accessibilityLabel={fleetBadge.description}
+                >
+                  <SymbolView
+                    name="laptopcomputer"
+                    size={10}
+                    tintColorClassName={
+                      selected
+                        ? selectedThreadRowColors.iconTintClassName
+                        : "accent-icon-muted"
+                    }
+                    type="monochrome"
+                  />
+                  <Text
+                    numberOfLines={1}
+                    className={cn(
+                      "max-w-28 text-3xs font-t3-bold",
+                      selected
+                        ? selectedThreadRowColors.foregroundClassName
+                        : rowAppearance.mutedForegroundClassName,
+                    )}
+                  >
+                    {fleetBadge.text}
+                  </Text>
+                </View>
+              ) : null}
+              {turnAuthor !== undefined ? (
+                <View
+                  className="rounded-md bg-subtle-strong px-1.5 py-0.5"
+                  accessibilityLabel={`Started by ${turnAuthor}`}
+                >
+                  <Text
+                    className={cn(
+                      "text-3xs font-t3-bold",
+                      selected
+                        ? selectedThreadRowColors.foregroundClassName
+                        : rowAppearance.mutedForegroundClassName,
+                    )}
+                  >
+                    {turnAuthor}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           ) : null}
         </View>

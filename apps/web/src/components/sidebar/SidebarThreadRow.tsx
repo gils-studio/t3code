@@ -39,6 +39,7 @@ import {
   CircleDotDashedIcon,
   ClockIcon,
   GitBranchIcon,
+  LaptopIcon,
   MessageCircleQuestionIcon,
   PinIcon,
   PinOffIcon,
@@ -49,6 +50,7 @@ import {
   UserRoundIcon,
   XIcon,
 } from "lucide-react";
+import { useThreadFleetBadge } from "../../state/fleetActivity";
 import {
   memo,
   useRef,
@@ -785,6 +787,18 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         {thread.turnAuthor}
       </Badge>
     ) : null;
+  // The session runs on the environment's machine; its builds and tests may run on the fleet.
+  const fleet = useThreadFleetBadge(
+    status === "working" || status === "waiting" ? thread.environmentId : null,
+    thread.id,
+  );
+  const fleetBadge =
+    fleet !== null ? (
+      <Badge variant="outline" size="sm" title={fleet.description} className="max-w-28 gap-0.5">
+        <LaptopIcon className="size-2.5 shrink-0" aria-hidden />
+        <span className="truncate">{fleet.text}</span>
+      </Badge>
+    ) : null;
 
   const branchMismatch = resolveLocalCheckoutBranchMismatch({
     effectiveEnvMode: thread.worktreePath === null ? "local" : "worktree",
@@ -1311,7 +1325,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                           topStatus.className,
                         )}
                       >
-                        {turnAuthorBadge}
+                        {fleetBadge}
+{turnAuthorBadge}
                         <TopStatusIcon icon={topStatus.icon} className="size-3" />
                         {topStatus.label}
                       </span>
@@ -1499,7 +1514,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                             topStatus.className,
                           )}
                         >
-                          {turnAuthorBadge}
+                          {fleetBadge}
+{turnAuthorBadge}
                           <TopStatusIcon icon={topStatus.icon} className="size-4" />
                           {/* Not a live region: a collapsed sidebar is inert, so
                             BackgroundThreadAnnouncer and the open thread's
