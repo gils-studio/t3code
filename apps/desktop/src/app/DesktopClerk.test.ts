@@ -250,7 +250,10 @@ describe("DesktopClerk", () => {
     }).pipe(
       Effect.scoped,
       Effect.provide(layerDesktopClerk(true, [], "darwin", undefined, undefined, listeners)),
-        Effect.provideService(DesktopWindow.DesktopWindow, {} as DesktopWindow.DesktopWindow["Service"]),
+      Effect.provideService(
+        DesktopWindow.DesktopWindow,
+        {} as DesktopWindow.DesktopWindow["Service"],
+      ),
       Effect.provideService(ElectronApp.ElectronApp, electronApp),
       Effect.provideService(
         ElectronWindow.ElectronWindow,
@@ -340,7 +343,10 @@ it.effect(
     }).pipe(
       Effect.scoped,
       Effect.provide(layerDesktopClerk(true, [], "darwin", undefined, undefined, listeners)),
-        Effect.provideService(DesktopWindow.DesktopWindow, {} as DesktopWindow.DesktopWindow["Service"]),
+      Effect.provideService(
+        DesktopWindow.DesktopWindow,
+        {} as DesktopWindow.DesktopWindow["Service"],
+      ),
       Effect.provideService(ElectronApp.ElectronApp, electronApp),
       Effect.provideService(ElectronWindow.ElectronWindow, electronWindow),
       Effect.provideService(DesktopWebLinks.DesktopWebLinks, ignoreWebLinks),
@@ -423,7 +429,10 @@ it.effect.each(["startup", "open-url", "early-second-instance"] as const)(
         assert.strictEqual(delivery?.returnUrl, request.returnUrl);
       }).pipe(
         Effect.provide(layerDesktopClerk(true, [], "darwin", undefined, shell, listeners)),
-        Effect.provideService(DesktopWindow.DesktopWindow, {} as DesktopWindow.DesktopWindow["Service"]),
+        Effect.provideService(
+          DesktopWindow.DesktopWindow,
+          {} as DesktopWindow.DesktopWindow["Service"],
+        ),
         Effect.provideService(HostProcess.Arguments, entry === "startup" ? ["t3", link] : ["t3"]),
         Effect.provideService(ElectronApp.ElectronApp, electronApp),
         Effect.provideService(
@@ -475,7 +484,10 @@ it.effect("hands web and app links to the renderer and leaves other links alone"
       ]);
     }).pipe(
       Effect.provide(layerDesktopClerk(true, [], "darwin", undefined, undefined, listeners)),
-        Effect.provideService(DesktopWindow.DesktopWindow, {} as DesktopWindow.DesktopWindow["Service"]),
+      Effect.provideService(
+        DesktopWindow.DesktopWindow,
+        {} as DesktopWindow.DesktopWindow["Service"],
+      ),
       Effect.provideService(HostProcess.Arguments, ["t3"]),
       Effect.provideService(ElectronApp.ElectronApp, electronApp),
       Effect.provideService(

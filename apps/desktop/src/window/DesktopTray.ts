@@ -40,7 +40,9 @@ export const make = Effect.gen(function* () {
   const openWindow = () =>
     void runPromise(
       desktopWindow.activate.pipe(
-        Effect.catchCause((cause) => logWarning("failed to open the window from the tray", { cause })),
+        Effect.catchCause((cause) =>
+          logWarning("failed to open the window from the tray", { cause }),
+        ),
       ),
     );
   const quit = () => void runPromise(electronApp.quit);
