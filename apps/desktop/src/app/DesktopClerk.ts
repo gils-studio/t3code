@@ -23,8 +23,12 @@ import * as DesktopUserData from "./DesktopUserData.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 import { openClerkTokenStorage } from "./ClerkTokenStore.ts";
 import * as DesktopWebLinks from "./DesktopWebLinks.ts";
+import * as DesktopWindow from "../window/DesktopWindow.ts";
 
 declare const __T3CODE_BUILD_CLERK_PUBLISHABLE_KEY__: string | undefined;
+
+/** Launching the app with this asks the running instance to quit, e.g. while it sits in the tray. */
+export const DESKTOP_QUIT_ARGUMENT = "--quit";
 
 export class DesktopClerkBridgeInitializationError extends Schema.TaggedError<DesktopClerkBridgeInitializationError>()(
   "DesktopClerkBridgeInitializationError",
@@ -60,6 +64,7 @@ export class DesktopClerk extends Context.Service<
       never,
       | ElectronApp.ElectronApp
       | ElectronWindow.ElectronWindow
+      | DesktopWindow.DesktopWindow
       | DesktopWebLinks.DesktopWebLinks
       | Scope.Scope
     >;
@@ -112,7 +117,11 @@ export const make = Effect.gen(function* () {
   yield* electronApp.setPath("userData", userDataPath);
 
   // Clerk skips the profile lock on macOS. Interrupt before runtime construction because quit is asynchronous.
-  if (!(yield* electronApp.requestSingleInstanceLock)) {
+  // Without a running instance, `--quit` has nothing to stop.
+  if (
+    !(yield* electronApp.requestSingleInstanceLock) ||
+    (yield* HostProcess.Arguments).includes(DESKTOP_QUIT_ARGUMENT)
+  ) {
     yield* electronApp.quit;
     return yield* Effect.interrupt;
   }
@@ -162,6 +171,7 @@ export const make = Effect.gen(function* () {
       const electronApp = yield* ElectronApp.ElectronApp;
       const electronWindow = yield* ElectronWindow.ElectronWindow;
       const webLinks = yield* DesktopWebLinks.DesktopWebLinks;
+      const desktopWindow = yield* DesktopWindow.DesktopWindow;
       const context = yield* Effect.context<ElectronWindow.ElectronWindow>();
       const runPromise = Effect.runPromiseWith(context);
 
@@ -234,6 +244,10 @@ export const make = Effect.gen(function* () {
         void runPromise(webLinks.receive(NodeURL.pathToFileURL(path).href));
       });
       handleSecondInstance = (argv) => {
+        if (argv?.includes(DESKTOP_QUIT_ARGUMENT)) {
+          void runPromise(electronApp.quit);
+          return;
+        }
         if (
           argv?.some(
             (value) =>
@@ -241,11 +255,13 @@ export const make = Effect.gen(function* () {
           )
         )
           return;
+        // Reopens the window when the app only runs in the tray.
         void runPromise(
-          Effect.gen(function* () {
-            const mainWindow = yield* electronWindow.currentMainOrFirst;
-            if (Option.isSome(mainWindow)) yield* electronWindow.reveal(mainWindow.value);
-          }),
+          desktopWindow.activate.pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Could not open the window for a second launch", cause),
+            ),
+          ),
         );
       };
       for (const argv of pendingSecondInstances.splice(0)) handleSecondInstance(argv);
