@@ -176,7 +176,10 @@ it.effect(
             configureFromSettings: () => Effect.succeed({ mode: "local-only" }),
             backendConfig: Effect.succeed({ httpBaseUrl: new URL("http://127.0.0.1:3773") }),
           } as unknown as DesktopServerExposure.DesktopServerExposure["Service"]),
-          Effect.provideService(DesktopTray.DesktopTray, { install: Effect.void }),
+          Effect.provideService(DesktopTray.DesktopTray, {
+            prepare: Effect.void,
+            install: Effect.void,
+          }),
           Effect.provideService(DesktopWslBackend.DesktopWslBackend, {
             reconcile: Effect.void,
           } as DesktopWslBackend.DesktopWslBackend["Service"]),

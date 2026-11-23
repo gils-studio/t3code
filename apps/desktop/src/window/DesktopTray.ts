@@ -15,13 +15,15 @@ import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as DesktopWindow from "./DesktopWindow.ts";
 
 /**
- * On Windows the local server keeps running after the last window closes, so
- * remote clients keep working while the renderers no longer cost memory. The
- * tray icon is the way back to the window and the way to really quit.
+ * On Windows the local server keeps running after the last window closes, so remote
+ * clients keep working without the UI's memory. Chromium keeps its GPU process then,
+ * so the tray ends it (a ~50 MB one restarts at once). The tray icon reopens or quits.
  */
 export class DesktopTray extends Context.Service<
   DesktopTray,
   {
+    /** Must run before Electron is ready. */
+    readonly prepare: Effect.Effect<void>;
     readonly install: Effect.Effect<void, never, Scope.Scope>;
   }
 >()("@t3tools/desktop/window/DesktopTray") {}
@@ -46,6 +48,24 @@ export const make = Effect.gen(function* () {
       ),
     );
   const quit = () => void runPromise(electronApp.quit);
+
+  const releaseGpuProcess = Effect.gen(function* () {
+    if (yield* Ref.get(state.quitting)) return;
+    const gpu = (yield* electronApp.getAppMetrics).find((metric) => metric.type === "GPU");
+    if (gpu === undefined) return;
+    yield* Effect.try(() => process.kill(gpu.pid));
+    yield* logInfo("ended the GPU process while only the tray is left", { pid: gpu.pid });
+  }).pipe(
+    Effect.catchCause((cause) => logWarning("failed to end the GPU process", { cause })),
+    Effect.withSpan("desktop.tray.releaseGpuProcess"),
+  );
+
+  // Ending the GPU process counts as a crash; after three, Chromium would fall back to
+  // software rendering for the rest of the session.
+  const prepare = Effect.gen(function* () {
+    if (environment.platform !== "win32") return;
+    yield* electronApp.appendCommandLineSwitch("disable-gpu-process-crash-limit");
+  });
 
   const install = Effect.gen(function* () {
     if (environment.platform !== "win32") return;
@@ -78,13 +98,14 @@ export const make = Effect.gen(function* () {
           ),
         ),
     );
+    yield* electronApp.on("window-all-closed", () => void runPromise(releaseGpuProcess));
     yield* logInfo("tray installed; closing the window keeps the server running");
   }).pipe(
     Effect.catchCause((cause) => logWarning("failed to install the tray", { cause })),
     Effect.withSpan("desktop.tray.install"),
   );
 
-  return DesktopTray.of({ install });
+  return DesktopTray.of({ prepare, install });
 });
 
 export const layer = Layer.effect(DesktopTray, make);
