@@ -15,11 +15,9 @@ import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as DesktopWindow from "./DesktopWindow.ts";
 
 /**
- * On Windows the local server keeps running after the last window closes, so
- * remote clients keep working while the renderers no longer cost memory. The
- * tray icon is the way back to the window and the way to really quit.
- * Chromium keeps the GPU process and its memory with no window left, so the
- * tray ends it; Chromium starts a smaller one at once.
+ * On Windows the local server keeps running after the last window closes, so remote
+ * clients keep working without the UI's memory. Chromium keeps its GPU process then,
+ * so the tray ends it (a ~50 MB one restarts at once). The tray icon reopens or quits.
  */
 export class DesktopTray extends Context.Service<
   DesktopTray,
