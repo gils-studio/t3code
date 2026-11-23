@@ -46,6 +46,7 @@ import * as DesktopSnapShot from "../snapShot/DesktopSnapShot.ts";
 import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import * as DesktopApplicationMenu from "../window/DesktopApplicationMenu.ts";
+import * as DesktopTray from "../window/DesktopTray.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 import * as DesktopWslBackend from "../wsl/DesktopWslBackend.ts";
 
@@ -175,6 +176,7 @@ it.effect(
             configureFromSettings: () => Effect.succeed({ mode: "local-only" }),
             backendConfig: Effect.succeed({ httpBaseUrl: new URL("http://127.0.0.1:3773") }),
           } as unknown as DesktopServerExposure.DesktopServerExposure["Service"]),
+          Effect.provideService(DesktopTray.DesktopTray, { install: Effect.void }),
           Effect.provideService(DesktopWslBackend.DesktopWslBackend, {
             reconcile: Effect.void,
           } as DesktopWslBackend.DesktopWslBackend["Service"]),

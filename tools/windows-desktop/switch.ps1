@@ -118,6 +118,9 @@ function Wait-Server([datetime] $Since) {
 function Stop-App {
   $procs = Get-AppProcesses
   Log "stopping $($procs.Count) app processes"
+  # Closing the window only sends the app to the tray; --quit runs its normal shutdown.
+  # Builds without --quit treat it as a second launch, so closing the window stays as fallback.
+  if ($procs.Count -gt 0) { Start-Process -FilePath $Exe -ArgumentList "--quit" -WorkingDirectory $AppDir }
   foreach ($p in $procs) {
     $proc = Get-Process -Id $p.ProcessId -ErrorAction SilentlyContinue
     if ($proc -and $proc.MainWindowHandle -ne 0) { [void]$proc.CloseMainWindow() }

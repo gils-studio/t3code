@@ -293,9 +293,12 @@ export const make = DesktopLifecycle.of({
         Effect.gen(function* () {
           const app = yield* ElectronApp.ElectronApp;
           const state = yield* DesktopState.DesktopState;
-          if (environment.platform !== "darwin" && !(yield* Ref.get(state.quitting))) {
-            yield* app.quit;
+          if (environment.platform === "darwin" || (yield* Ref.get(state.quitting))) return;
+          if (yield* Ref.get(state.keepRunningInTray)) {
+            yield* logLifecycleInfo("last window closed; server keeps running in the tray");
+            return;
           }
+          yield* app.quit;
         }).pipe(Effect.withSpan("desktop.lifecycle.windowAllClosed")),
       );
     });

@@ -163,6 +163,48 @@ describe("DesktopLifecycle", () => {
     },
   );
 
+  it.effect.each([
+    { inTray: false, quits: true },
+    { inTray: true, quits: false },
+  ])("closing the last window on Windows quits: $quits (tray: $inTray)", ({ inTray, quits }) => {
+    const appListeners = new Map<string, (...args: readonly unknown[]) => void>();
+    let quitCount = 0;
+    const layer = DesktopLifecycle.layer.pipe(
+      Layer.provideMerge(
+        layerElectronApp(
+          appListeners,
+          Effect.sync(() => {
+            quitCount += 1;
+          }),
+        ),
+      ),
+      Layer.provideMerge(layerElectronTheme),
+      Layer.provideMerge(layerElectronWindow()),
+      Layer.provideMerge(layerDesktopWindow()),
+      Layer.provideMerge(
+        Layer.succeed(DesktopEnvironment.DesktopEnvironment, {
+          platform: "win32",
+          isDevelopment: false,
+        } as DesktopEnvironment.DesktopEnvironment["Service"]),
+      ),
+      Layer.provideMerge(DesktopShutdown.layer),
+      Layer.provideMerge(DesktopState.layer),
+    );
+
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const state = yield* DesktopState.DesktopState;
+        yield* Ref.set(state.keepRunningInTray, inTray);
+        yield* (yield* DesktopLifecycle.DesktopLifecycle).register;
+
+        appListeners.get("window-all-closed")?.();
+        yield* Effect.yieldNow;
+
+        assert.strictEqual(quitCount, quits ? 1 : 0);
+      }),
+    ).pipe(Effect.provide(layer));
+  });
+
   it.effect("destroys windows before waiting for backend shutdown", () =>
     Effect.gen(function* () {
       const appListeners = new Map<string, (...args: readonly unknown[]) => void>();

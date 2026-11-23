@@ -94,9 +94,11 @@ service is still installed and will start at the next login.
 
 Windows background services are not supported. To keep a Windows host available
 through T3 Connect, leave the desktop app running with its local environment
-enabled, or keep `t3 serve` running in a terminal. Minimize the desktop app rather
-than closing its last window, which stops its local server. Linking T3 Connect
-does not configure automatic startup at Windows sign-in.
+enabled, or keep `t3 serve` running in a terminal. Closing the desktop app's last
+window keeps its local server and running agents going in the notification area
+(tray); click the tray icon to open the window again, or choose **Quit** from its
+menu to stop the server. Linking T3 Connect does not configure automatic startup
+at Windows sign-in.
 
 `t3 up` installs the service when you set up T3 Connect, but the two are managed
 separately. Signing out of T3 Connect does not stop or uninstall the service.
