@@ -3,10 +3,14 @@ import { expect, it, vi } from "vite-plus/test";
 const mocks = vi.hoisted(() => ({
   state: "active",
   listeners: new Set<(state: string) => void>(),
+  get: vi.fn<() => Promise<{ granted: boolean; canAskAgain: boolean }>>(),
   request: vi.fn<() => Promise<{ granted: boolean; canAskAgain: boolean }>>(),
 }));
 
-vi.mock("expo-audio", () => ({ requestRecordingPermissionsAsync: mocks.request }));
+vi.mock("expo-audio", () => ({
+  getRecordingPermissionsAsync: mocks.get,
+  requestRecordingPermissionsAsync: mocks.request,
+}));
 vi.mock("react-native", () => ({
   Platform: { OS: "android" },
   AppState: {
@@ -29,7 +33,12 @@ function changeAppState(state: string) {
 
 it("keeps dictation alive while Android's permission activity backgrounds the app", async () => {
   const permission = Promise.withResolvers<{ granted: boolean; canAskAgain: boolean }>();
-  mocks.request.mockReturnValue(permission.promise);
+  mocks.get.mockResolvedValue({ granted: false, canAskAgain: true });
+  const requested = Promise.withResolvers<void>();
+  mocks.request.mockImplementation(() => {
+    requested.resolve();
+    return permission.promise;
+  });
   const interrupted = vi.fn();
   const recording = createVoiceRecordingPermission(interrupted);
   let settled = false;
@@ -38,6 +47,7 @@ it("keeps dictation alive while Android's permission activity backgrounds the ap
     return value;
   });
 
+  await requested.promise;
   changeAppState("background");
   permission.resolve({ granted: true, canAskAgain: true });
   await Promise.resolve();

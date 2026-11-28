@@ -178,7 +178,7 @@ import { ManagedRuntimeModeNotice } from "./ManagedRuntimeModeNotice";
 import { ComposerFeedback } from "./ComposerFeedback";
 import { ComposerUsageLimits } from "./ComposerUsageLimits";
 import { PendingUserInputCard } from "./PendingUserInputCard";
-import { isDictatingInto, isPendingRequestHeldBack } from "./pendingRequestHold";
+import { isPendingRequestHeldBack } from "./pendingRequestHold";
 import { ProviderSubagentBar } from "./ProviderSubagentBar";
 import { ThreadCreationFailedCard } from "./ThreadCreationFailedCard";
 import {
@@ -207,7 +207,7 @@ import { ThreadSideChatsRow } from "./ThreadSideChatsRow";
 import type { ThreadContentPresentation } from "./threadContentPresentation";
 import { resolveThreadFeedSubmissionAnchor } from "./thread-feed-live-follow";
 import { useOpenLinkedThread } from "./useOpenLinkedThread";
-import { useGlobalVoiceInput } from "../voice-input/VoiceInputProvider";
+import { useIsDictatingInto, useVoiceInputSession } from "../voice-input/VoiceInputProvider";
 
 export interface ThreadDetailScreenProps {
   readonly header?: React.ReactNode;
@@ -395,11 +395,8 @@ function ThreadDetailBody(
   const navigation = useNavigation();
   const openLinkedThread = useOpenLinkedThread();
   const openInspector = useOpenThreadInspector();
-  const {
-    session: voiceInputSession,
-    state: voiceInputState,
-    ownerKey: voiceInputOwnerKey,
-  } = useGlobalVoiceInput();
+  const voiceInputSession = useVoiceInputSession();
+  const dictatingHere = useIsDictatingInto(props.composerDraftKey);
   const draftHasMessage = useComposerDraftHasMessage(props.composerDraftKey);
   const frontRequestId =
     props.activePendingApproval?.requestId ?? props.activePendingUserInput?.requestId ?? null;
@@ -407,9 +404,7 @@ function ThreadDetailBody(
   const requestHeldBack = isPendingRequestHeldBack({
     requestId: frontRequestId,
     openedRequestId,
-    composerKey: props.composerDraftKey,
-    voiceOwnerKey: voiceInputOwnerKey,
-    voiceState: voiceInputState,
+    dictatingHere,
     draftHasMessage,
   });
   // A request once shown stays shown while the user types under it.
@@ -948,9 +943,7 @@ function ThreadDetailBody(
   const questionInFlow = Platform.OS === "android" && activeUserInputRequestId !== null;
   // A failed start shows its card instead of the composer, but not over a running dictation.
   const composerSlotHidden =
-    activeUserInputRequestId !== null ||
-    (props.creationState?.kind === "failed" &&
-      !isDictatingInto(props.composerDraftKey, voiceInputOwnerKey, voiceInputState));
+    activeUserInputRequestId !== null || (props.creationState?.kind === "failed" && !dictatingHere);
   const pendingMessageEditBlocked =
     queuedRunEditBlockedReason({ openQuestionCount: activeUserInputRequestId === null ? 0 : 1 }) !==
     null;

@@ -1,4 +1,4 @@
-import { requestRecordingPermissionsAsync } from "expo-audio";
+import { getRecordingPermissionsAsync, requestRecordingPermissionsAsync } from "expo-audio";
 import { AppState, Platform } from "react-native";
 
 export function createVoiceRecordingPermission(onBackground: () => void) {
@@ -11,6 +11,9 @@ export function createVoiceRecordingPermission(onBackground: () => void) {
   });
   return {
     requestPermission: async () => {
+      // A request takes a round trip through the permission system even when access is granted.
+      const current = await getRecordingPermissionsAsync();
+      if (current.granted) return current;
       if (Platform.OS !== "android") return requestRecordingPermissionsAsync();
       // Android's permission activity backgrounds the app; resume before preparing Google's model.
       requesting = true;
