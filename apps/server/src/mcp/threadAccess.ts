@@ -9,6 +9,7 @@ import {
   ThreadId,
   type OrchestrationV2ThreadShell,
 } from "@t3tools/contracts";
+import { markForSenderAuthor } from "@t3tools/shared/messageMarker";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 
@@ -59,6 +60,15 @@ export const dispatchFailure = (
           message: Array.from(error.cause).slice(0, 1000).join(""),
         })
       : unavailable();
+
+/**
+ * The text and marker flag of a message the calling thread's agent sends: it speaks for the
+ * person whose turn it is there, so the thread it starts or writes to is theirs too.
+ */
+export const asCallerAuthor = (
+  caller: Pick<OrchestrationV2ThreadShell, "turnAuthor"> | null | undefined,
+  text: string,
+) => markForSenderAuthor(text, caller?.turnAuthor);
 
 export interface CallerLimits {
   readonly runtimeMode: RuntimeMode;

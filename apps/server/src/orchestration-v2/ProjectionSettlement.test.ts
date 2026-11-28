@@ -352,6 +352,7 @@ it.effect("sql: the shell names who wrote in the thread from message markers", (
       text: string,
       createdBy: "user" | "agent" = "user",
       senderThreadId?: ThreadId,
+      markerFromSender?: true,
     ) =>
       store.apply({
         id: EventId.make(`event:settlement:authors:${id}`),
@@ -362,6 +363,7 @@ it.effect("sql: the shell names who wrote in the thread from message markers", (
           createdBy,
           creationSource: createdBy === "user" ? "web" : "provider",
           ...(senderThreadId === undefined ? {} : { senderThreadId }),
+          ...(markerFromSender === undefined ? {} : { markerFromSender }),
           id: MessageId.make(`message:settlement:authors:${id}`),
           threadId,
           runId: null,
@@ -386,6 +388,14 @@ it.effect("sql: the shell names who wrote in the thread from message markers", (
       "agent",
       ThreadId.make("thread:settlement:other"),
     );
+    // The server wrote this marker for the person whose turn in the sender thread sent it.
+    yield* message(
+      "launched",
+      "[Message from Anna]\n\nstart this",
+      "agent",
+      ThreadId.make("thread:settlement:launcher"),
+      true,
+    );
 
     const sqlShell = (yield* store.getShellSnapshot()).threads.find(
       (thread) => thread.id === threadId,
@@ -396,7 +406,7 @@ it.effect("sql: the shell names who wrote in the thread from message markers", (
     for (const shell of [sqlShell, memoryShell]) {
       assert.deepEqual(
         [...(shell?.messageAuthors ?? [])].map((name) => name.toLowerCase()).toSorted(),
-        ["gerrit", "nils"],
+        ["anna", "gerrit", "nils"],
       );
     }
   }).pipe(Effect.provide(layerSql)),
@@ -410,6 +420,7 @@ it.effect("sql: the shell names who started the running turn", () =>
       ordinal: number,
       text: string,
       senderThreadId?: ThreadId,
+      markerFromSender?: true,
     ) =>
       store.apply({
         id: EventId.make(`event:settlement:turn-author:${threadId}:${ordinal}`),
@@ -420,6 +431,7 @@ it.effect("sql: the shell names who started the running turn", () =>
           createdBy: senderThreadId === undefined ? "user" : "agent",
           creationSource: senderThreadId === undefined ? "web" : "provider",
           ...(senderThreadId === undefined ? {} : { senderThreadId }),
+          ...(markerFromSender === undefined ? {} : { markerFromSender }),
           id: MessageId.make(`message:run:${threadId}:${ordinal}`),
           threadId,
           runId: null,
@@ -465,6 +477,17 @@ it.effect("sql: the shell names who started the running turn", () =>
     );
     yield* createRun(relayed, "running", 1);
     assert.deepEqual(yield* turnAuthors(relayed), [undefined, undefined]);
+
+    const launched = yield* createThread("turn-author-launched");
+    yield* runMessage(
+      launched,
+      1,
+      "[Message from Nils]\n\nstart this",
+      ThreadId.make("thread:settlement:launcher"),
+      true,
+    );
+    yield* createRun(launched, "running", 1);
+    assert.deepEqual(yield* turnAuthors(launched), ["Nils", "Nils"]);
   }).pipe(Effect.provide(layerSql)),
 );
 

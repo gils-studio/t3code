@@ -29,7 +29,13 @@ import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { resolveRuntimeMode } from "../../delegatedTaskModes.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
-import { newCommandId, readCaller, resolveProjectId, unavailable } from "../../threadAccess.ts";
+import {
+  asCallerAuthor,
+  newCommandId,
+  readCaller,
+  resolveProjectId,
+  unavailable,
+} from "../../threadAccess.ts";
 import { ProjectToolkit } from "./tools.ts";
 
 const isAboveCeilingError = Schema.is(OrchestratorRuntimeModeAboveCeilingError);
@@ -237,8 +243,12 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
             : {
                 initialMessage: {
                   messageId,
-                  ...(caller === undefined ? {} : { senderThreadId: caller.id }),
-                  text: input.message ?? "",
+                  ...(caller === undefined
+                    ? { text: input.message ?? "" }
+                    : {
+                        senderThreadId: caller.id,
+                        ...asCallerAuthor(caller, input.message ?? ""),
+                      }),
                   attachments,
                 },
               }),

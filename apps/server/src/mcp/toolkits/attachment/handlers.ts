@@ -11,7 +11,7 @@ import * as Upload from "../../../assets/AttachmentUpload.ts";
 import * as Claims from "../../../orchestration-v2/AttachmentClaims.ts";
 import * as ThreadMessageIntake from "../../../orchestration-v2/ThreadMessageIntake.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
-import { newCommandId, readThread, unavailable } from "../../threadAccess.ts";
+import { asCallerAuthor, newCommandId, readThread, unavailable } from "../../threadAccess.ts";
 import { AttachmentToolkit } from "./tools.ts";
 
 export function resolveAttachmentReferences(
@@ -99,8 +99,9 @@ export const layer = McpToolAccess.toLayer(
               threadId: projection.thread.id,
               commandId,
               messageId,
-              ...(caller === undefined ? {} : { senderThreadId: caller.id }),
-              text: input.message ?? "",
+              ...(caller === undefined
+                ? { text: input.message ?? "" }
+                : { senderThreadId: caller.id, ...asCallerAuthor(caller, input.message ?? "") }),
               attachments,
               mode: "auto",
               createdBy: "agent",

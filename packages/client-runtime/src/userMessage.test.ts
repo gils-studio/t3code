@@ -239,6 +239,16 @@ describe("resolveUserMessagePresentation", () => {
         text,
       }),
     ).toEqual({ text, attribution: "agent", scheduledTaskId: undefined });
+    // A marker the server wrote for the sender thread's author names that person.
+    expect(
+      resolveUserMessagePresentation({
+        role: "user",
+        createdBy: "agent",
+        senderThreadId: "thread",
+        markerFromSender: true,
+        text,
+      }),
+    ).toEqual(voice);
   });
 
   it("hides the prompt that stands in for an attachment-only message", () => {
