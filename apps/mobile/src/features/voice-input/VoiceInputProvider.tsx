@@ -190,6 +190,23 @@ export function isVoiceInputBusy(): boolean {
   );
 }
 
+export function useVoiceInputSession(): VoiceInputSession {
+  return useAtomValue(voiceInputAtom).session;
+}
+
+/** Re-renders only when a dictation into this composer starts or ends, not on every recording tick. */
+export function useIsDictatingInto(ownerKey: string | null): boolean {
+  const session = useVoiceInputSession();
+  return useSyncExternalStore(session.subscribe, () => {
+    const snapshot = session.getSnapshot();
+    return (
+      ownerKey !== null &&
+      snapshot.ownerKey === ownerKey &&
+      voiceInputBlocksSubmission(snapshot.state)
+    );
+  });
+}
+
 export function useGlobalVoiceInput() {
   const { session, audioLevels } = useAtomValue(voiceInputAtom);
   const isTranscriberAvailable = useAtomValue(localVoiceInputAvailableAtom);

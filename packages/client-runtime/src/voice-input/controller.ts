@@ -204,7 +204,8 @@ export class VoiceInputController {
   private state: VoiceInputState = IDLE_STATE;
   private operationToken = 0;
   private sessionToken: VoiceInputSession | null = null;
-  private transcription: PreparedVoiceTranscription | null = null;
+  /** Prepared while recording, so loading the model never delays the capture. */
+  private transcription: Promise<PreparedVoiceTranscription> | null = null;
   private transcriptionAbortController: AbortController | null = null;
   private capturedDraft: VoiceDraftSnapshot | null = null;
   private recordingUri: string | null = null;
@@ -270,16 +271,11 @@ export class VoiceInputController {
       }
 
       if (transcriber) {
-        try {
-          this.transcription = await runTranscriptionOperation(() =>
-            transcriber.prepare({ signal: abortController.signal }),
-          );
-        } catch (error) {
-          if (this.isCurrent(operationToken))
-            this.setError(preparationErrorMessage(error), "retry");
-          return;
-        }
-        if (!this.isCurrent(operationToken)) return;
+        const transcription = runTranscriptionOperation(() =>
+          transcriber.prepare({ signal: abortController.signal }),
+        );
+        transcription.catch(() => {});
+        this.transcription = transcription;
       }
 
       await this.dependencies.configureRecording();
@@ -301,6 +297,10 @@ export class VoiceInputController {
         forDuration: handoff?.recordingLimitSeconds ?? VOICE_RECORDING_LIMIT_SECONDS,
       });
       this.setState({ phase: "recording", error: null, errorAction: null });
+      this.transcription?.catch((error: unknown) => {
+        if (this.isCurrent(operationToken) && this.state.phase === "recording" && !this.finishing)
+          void this.discardRecording(preparationErrorMessage(error));
+      });
     } catch {
       if (this.isCurrent(operationToken))
         this.setError("Could not start voice recording.", "retry");
@@ -427,9 +427,16 @@ export class VoiceInputController {
       }
 
       const recordingUri = this.recordingUri;
-      const transcription = this.transcription;
       const signal = this.transcriptionAbortController.signal;
       const capturedDraft = this.capturedDraft;
+      let transcription: PreparedVoiceTranscription;
+      try {
+        transcription = await this.transcription;
+      } catch (error) {
+        if (this.isCurrent(operationToken)) this.setError(preparationErrorMessage(error), "retry");
+        return;
+      }
+      if (!this.isCurrent(operationToken)) return;
       let transcript: string;
       try {
         transcript = await runTranscriptionOperation(() =>
@@ -530,6 +537,8 @@ export class VoiceInputController {
     this.capturedDraft = null;
     this.handoff = null;
     this.transcription = null;
+    // A preparation still running for a recording that ended must stop and free the transcriber.
+    this.transcriptionAbortController?.abort();
     this.transcriptionAbortController = null;
   }
 
