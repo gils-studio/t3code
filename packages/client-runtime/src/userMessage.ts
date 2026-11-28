@@ -97,6 +97,7 @@ export function resolveUserMessagePresentation(message: {
   readonly creationSource?: OrchestrationV2CreationSource;
   readonly scheduledTaskId?: ScheduledTaskId | undefined;
   readonly senderThreadId?: string | undefined;
+  readonly markerFromSender?: boolean | undefined;
   readonly context?: { readonly guest?: GuestMessageAttribution | undefined } | undefined;
 }): {
   readonly text: string;

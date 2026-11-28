@@ -122,7 +122,7 @@ import {
   runtimeModeRank,
   taskPrompt,
 } from "./delegatedTaskModes.ts";
-import { isLiveCallerShell, threadNotFound } from "./threadAccess.ts";
+import { asCallerAuthor, isLiveCallerShell, threadNotFound } from "./threadAccess.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as PeerForwarding from "../peer/PeerForwarding.ts";
 import * as RemoteDelegation from "../peer/RemoteDelegation.ts";
@@ -1210,6 +1210,13 @@ const make = Effect.gen(function* () {
         : yield* loadTargetThread(threadId, includeHistory);
     return { ...caller, target } as const;
   });
+
+  /** Text and marker flag of a message the calling thread sends, for whoever's turn it is there. */
+  const asSenderAuthor = (senderThreadId: ThreadId, text: string) =>
+    threadManagement.getThreadShell(senderThreadId).pipe(
+      Effect.mapError(threadManagementFailure),
+      Effect.map((shell) => asCallerAuthor(shell, text)),
+    );
 
   /** Cross-thread writes require a live caller run; stale session credentials cannot authorize them. */
   const assertLiveCallerForOtherThread = (
@@ -2885,7 +2892,7 @@ const make = Effect.gen(function* () {
                       requestKey: key,
                       index,
                     }),
-                    text: request.prompt,
+                    ...(yield* asSenderAuthor(scope.thread.threadId, request.prompt)),
                     attachments: [],
                     modelSelection: resolvedModelSelection,
                     dispatchMode: { type: "start_immediately" },
@@ -3124,9 +3131,13 @@ const make = Effect.gen(function* () {
             operation: "thread-send",
           }),
           threadId: input.threadId,
-          ...(parent === undefined ? {} : { senderThreadId: parent.thread.id }),
+          ...(parent === undefined
+            ? { text: input.message }
+            : {
+                senderThreadId: parent.thread.id,
+                ...(yield* asSenderAuthor(parent.thread.id, input.message)),
+              }),
           messageId,
-          text: input.message,
           attachments: [],
           mode,
           createdBy: "agent",

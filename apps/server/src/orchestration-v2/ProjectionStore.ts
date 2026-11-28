@@ -6294,13 +6294,14 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                     SELECT
                       json_extract(message.payload_json, '$.text') AS text,
                       json_extract(message.payload_json, '$.createdBy') AS created_by,
-                      json_extract(message.payload_json, '$.senderThreadId') AS sender_thread_id
+                      json_extract(message.payload_json, '$.senderThreadId') AS sender_thread_id,
+                      json_extract(message.payload_json, '$.markerFromSender') AS marker_from_sender
                     FROM orchestration_v2_projection_messages message
                     WHERE message.thread_id = t.thread_id
                       AND message.role = 'user'
                   )
                   WHERE (text LIKE '[Message from %' OR text LIKE '[Voice message from %')
-                    AND (created_by IS NOT 'agent' OR sender_thread_id IS NULL)
+                    AND (created_by IS NOT 'agent' OR sender_thread_id IS NULL OR marker_from_sender = 1)
                 )
               ) AS message_author_markers_json,
               (
@@ -6309,7 +6310,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                   SELECT
                     json_extract(message.payload_json, '$.text') AS text,
                     json_extract(message.payload_json, '$.createdBy') AS created_by,
-                    json_extract(message.payload_json, '$.senderThreadId') AS sender_thread_id
+                    json_extract(message.payload_json, '$.senderThreadId') AS sender_thread_id,
+                    json_extract(message.payload_json, '$.markerFromSender') AS marker_from_sender
                   FROM orchestration_v2_projection_messages message
                   WHERE message.message_id = COALESCE(
                     (
@@ -6325,7 +6327,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                   )
                 )
                 WHERE (text LIKE '[Message from %' OR text LIKE '[Voice message from %')
-                  AND (created_by IS NOT 'agent' OR sender_thread_id IS NULL)
+                  AND (created_by IS NOT 'agent' OR sender_thread_id IS NULL OR marker_from_sender = 1)
               ) AS turn_author_marker,
               EXISTS (
                 SELECT 1
