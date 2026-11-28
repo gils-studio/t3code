@@ -943,8 +943,7 @@ function ThreadDetailBody(
   const questionInFlow = Platform.OS === "android" && activeUserInputRequestId !== null;
   // A failed start shows its card instead of the composer, but not over a running dictation.
   const composerSlotHidden =
-    activeUserInputRequestId !== null ||
-    (props.creationState?.kind === "failed" && !dictatingHere);
+    activeUserInputRequestId !== null || (props.creationState?.kind === "failed" && !dictatingHere);
   const pendingMessageEditBlocked =
     queuedRunEditBlockedReason({ openQuestionCount: activeUserInputRequestId === null ? 0 : 1 }) !==
     null;
